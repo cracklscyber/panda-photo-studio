@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { NextRequest, NextResponse } from 'next/server'
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '')
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' })
 
 const SYSTEM_PROMPT = `Du bist Panda, ein freundlicher und kreativer Assistent für Produktfotografie.
 Du sprichst Deutsch und bist immer hilfsbereit und enthusiastisch.
@@ -17,100 +17,140 @@ Wenn ein Kunde ein Bild hochlädt:
 - Frage nach dem gewünschten Stil/Hintergrund falls nicht angegeben
 - Schlage 2-3 kreative Ideen vor
 
-Halte deine Antworten freundlich, kurz und hilfreich. Nutze gelegentlich Panda-bezogene Ausdrücke.`
+Halte deine Antworten freundlich, kurz und hilfreich.`
 
 export async function POST(request: NextRequest) {
   try {
     const { message, image, history } = await request.json()
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
-
-    // Build the prompt parts
-    const parts: any[] = []
-
-    // Add system prompt for context
-    if (history.length <= 1) {
-      parts.push({ text: SYSTEM_PROMPT + '\n\n' })
-    }
-
-    // Add conversation history context
-    if (history.length > 1) {
-      const historyText = history
-        .slice(-6) // Last 6 messages for context
-        .map((m: any) => `${m.role === 'user' ? 'Kunde' : 'Panda'}: ${m.content}`)
-        .join('\n')
-      parts.push({ text: `Bisheriges Gespräch:\n${historyText}\n\n` })
-    }
-
-    // Add image if provided
-    if (image) {
-      // Extract base64 data from data URL
-      const base64Data = image.split(',')[1]
-      const mimeType = image.split(';')[0].split(':')[1]
-
-      parts.push({
-        inlineData: {
-          mimeType: mimeType,
-          data: base64Data
-        }
-      })
-    }
-
-    // Add user message
-    parts.push({ text: `Kunde: ${message}\n\nPanda:` })
-
-    // Check if this is a request to generate an image
-    const isImageGenerationRequest =
+    // Check if this is a request to generate/edit an image
+    const isImageRequest =
       message.toLowerCase().includes('erstell') ||
       message.toLowerCase().includes('generier') ||
       message.toLowerCase().includes('mach mir') ||
       message.toLowerCase().includes('zeig mir') ||
+      message.toLowerCase().includes('ändere') ||
+      message.toLowerCase().includes('bearbeite') ||
       (image && (
         message.toLowerCase().includes('hintergrund') ||
         message.toLowerCase().includes('szene') ||
-        message.toLowerCase().includes('foto')
+        message.toLowerCase().includes('foto') ||
+        message.toLowerCase().includes('bild')
       ))
 
     let responseText = ''
-    let generatedImage = null
+    let generatedImage: string | null = null
 
-    if (isImageGenerationRequest && image) {
-      // Try to generate an image
-      try {
-        const imageModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+    if (isImageRequest) {
+      // Use gemini-2.5-flash-image for image generation/editing
+      const contents: any[] = []
 
-        // First, get a creative response
-        const chatResponse = await model.generateContent(parts)
-        responseText = chatResponse.response.text()
-
-        // Then try to generate the image
-        const imagePrompt = `Professional product photography: ${message}.
-High quality, commercial style, clean composition, professional lighting.`
-
-        // Note: Image generation with Gemini requires specific setup
-        // For now, we'll provide the text response and explain
-        responseText += '\n\n(Bildgenerierung wird vorbereitet... In der Vollversion würde hier dein Produktfoto erscheinen!)'
-
-      } catch (imgError) {
-        console.error('Image generation error:', imgError)
-        const chatResponse = await model.generateContent(parts)
-        responseText = chatResponse.response.text()
+      // Add image if provided (for editing)
+      if (image) {
+        const base64Data = image.split(',')[1]
+        const mimeType = image.split(';')[0].split(':')[1]
+        contents.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        })
       }
+
+      // Build the image generation prompt
+      const imagePrompt = image
+        ? `${message}. Behalte das Produkt aus dem Bild bei und erstelle ein professionelles Produktfoto mit hoher Qualität, kommerziellem Stil, sauberer Komposition und professioneller Beleuchtung.`
+        : `Erstelle ein professionelles Produktfoto: ${message}. Hohe Qualität, kommerzieller Stil, saubere Komposition, professionelle Beleuchtung.`
+
+      contents.push({ text: imagePrompt })
+
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: contents,
+          config: {
+            responseModalities: ['TEXT', 'IMAGE'],
+          },
+        })
+
+        // Process response parts
+        if (response.candidates && response.candidates[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.text) {
+              responseText += part.text
+            } else if (part.inlineData) {
+              // Convert image data to base64 data URL
+              const imageData = part.inlineData.data
+              const mimeType = part.inlineData.mimeType || 'image/png'
+              generatedImage = `data:${mimeType};base64,${imageData}`
+            }
+          }
+        }
+
+        if (!responseText) {
+          responseText = 'Hier ist dein generiertes Produktfoto!'
+        }
+
+      } catch (imgError: any) {
+        console.error('Image generation error:', imgError)
+        responseText = `Es gab ein Problem bei der Bildgenerierung: ${imgError.message || 'Unbekannter Fehler'}. Bitte versuche es mit einer anderen Beschreibung.`
+      }
+
     } else {
-      // Regular chat response
-      const response = await model.generateContent(parts)
-      responseText = response.response.text()
+      // Regular chat - use standard Gemini model for conversation
+      const parts: any[] = []
+
+      // Add system prompt for first message
+      if (history.length <= 1) {
+        parts.push({ text: SYSTEM_PROMPT + '\n\n' })
+      }
+
+      // Add conversation history
+      if (history.length > 1) {
+        const historyText = history
+          .slice(-6)
+          .map((m: any) => `${m.role === 'user' ? 'Kunde' : 'Panda'}: ${m.content}`)
+          .join('\n')
+        parts.push({ text: `Bisheriges Gespräch:\n${historyText}\n\n` })
+      }
+
+      // Add image if provided
+      if (image) {
+        const base64Data = image.split(',')[1]
+        const mimeType = image.split(';')[0].split(':')[1]
+        parts.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        })
+      }
+
+      parts.push({ text: `Kunde: ${message}\n\nPanda:` })
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: parts,
+      })
+
+      if (response.candidates && response.candidates[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.text) {
+            responseText += part.text
+          }
+        }
+      }
     }
 
     return NextResponse.json({
-      message: responseText,
+      message: responseText || 'Ich konnte keine Antwort generieren. Bitte versuche es erneut.',
       generatedImage: generatedImage
     })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Chat API error:', error)
     return NextResponse.json(
-      { message: 'Es tut mir leid, es gab einen Fehler. Bitte versuche es erneut!' },
+      { message: `Es tut mir leid, es gab einen Fehler: ${error.message || 'Unbekannt'}` },
       { status: 500 }
     )
   }
