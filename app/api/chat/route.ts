@@ -1,7 +1,15 @@
 import { GoogleGenAI } from '@google/genai'
 import { NextRequest, NextResponse } from 'next/server'
 
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' })
+// Initialize client lazily at runtime, not build time
+let ai: GoogleGenAI | null = null
+
+function getClient(): GoogleGenAI {
+  if (!ai) {
+    ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' })
+  }
+  return ai
+}
 
 const SYSTEM_PROMPT = `Du bist Panda, ein freundlicher und kreativer Assistent für Produktfotografie.
 Du sprichst Deutsch und bist immer hilfsbereit und enthusiastisch.
@@ -65,7 +73,7 @@ export async function POST(request: NextRequest) {
       contents.push({ text: imagePrompt })
 
       try {
-        const response = await ai.models.generateContent({
+        const response = await getClient().models.generateContent({
           model: 'gemini-2.5-flash-image',
           contents: contents,
           config: {
@@ -128,7 +136,7 @@ export async function POST(request: NextRequest) {
 
       parts.push({ text: `Kunde: ${message}\n\nPanda:` })
 
-      const response = await ai.models.generateContent({
+      const response = await getClient().models.generateContent({
         model: 'gemini-2.0-flash',
         contents: parts,
       })
