@@ -32,12 +32,10 @@ async function withRetry<T>(
     } catch (error: any) {
       lastError = error
 
-      // Only retry on rate limit errors
       if (!isRetryableError(error) || attempt === maxRetries) {
         throw error
       }
 
-      // Exponential backoff: 2s, 4s, 8s
       const delay = initialDelay * Math.pow(2, attempt)
       console.log(`Rate limit hit, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
       await new Promise(resolve => setTimeout(resolve, delay))
@@ -45,6 +43,44 @@ async function withRetry<T>(
   }
 
   throw lastError
+}
+
+// Text model with fallback
+const TEXT_MODEL = 'gemini-2.5-flash'
+const TEXT_MODEL_FALLBACK = 'gemini-2.5-flash-lite'
+
+async function generateText(client: GoogleGenAI, parts: any[]): Promise<string> {
+  try {
+    const response = await withRetry(() =>
+      client.models.generateContent({
+        model: TEXT_MODEL,
+        contents: parts,
+      })
+    )
+
+    let text = ''
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.text) text += part.text
+      }
+    }
+    return text
+  } catch (error: any) {
+    // Try fallback model
+    console.log(`Switching to fallback model: ${TEXT_MODEL_FALLBACK}`)
+    const response = await client.models.generateContent({
+      model: TEXT_MODEL_FALLBACK,
+      contents: parts,
+    })
+
+    let text = ''
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.text) text += part.text
+      }
+    }
+    return text
+  }
 }
 
 // Helper function for user-friendly error messages
@@ -213,20 +249,7 @@ export async function POST(request: NextRequest) {
         { text: '\n\nDer Kunde hat dieses Produktbild hochgeladen, aber noch keine Beschreibung gegeben. Analysiere das Bild kurz und frage nach dem gewünschten Stil für das finale Produktfoto. Gib 2-3 konkrete Vorschläge.' }
       ]
 
-      const response = await withRetry(() =>
-        getClient().models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: parts,
-        })
-      )
-
-      if (response.candidates && response.candidates[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.text) {
-            responseText += part.text
-          }
-        }
-      }
+      responseText = await generateText(getClient(), parts)
 
     } else if (isImageRequest) {
       // Use gemini-2.5-flash-image for image generation/editing
@@ -328,20 +351,7 @@ export async function POST(request: NextRequest) {
 
       parts.push({ text: `Kunde: ${message}${shortPromptInstruction}\n\nLumino:` })
 
-      const response = await withRetry(() =>
-        getClient().models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: parts,
-        })
-      )
-
-      if (response.candidates && response.candidates[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.text) {
-            responseText += part.text
-          }
-        }
-      }
+      responseText = await generateText(getClient(), parts)
     }
 
     return NextResponse.json({

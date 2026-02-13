@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
       // Regular chat response
       const response = await withRetry(() =>
         getClient().models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           contents: parts,
         })
       )
