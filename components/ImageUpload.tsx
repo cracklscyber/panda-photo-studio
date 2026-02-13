@@ -36,8 +36,8 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
         type="button"
         className={`p-2 rounded-full transition-colors ${
           isDragActive
-            ? 'bg-green-100 text-green-600'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            ? 'bg-purple-500/30 text-purple-300'
+            : 'bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white'
         }`}
         title="Bild hochladen"
       >
