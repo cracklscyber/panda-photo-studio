@@ -1,7 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseWhatsAppWebhook, sendWhatsAppMessage, extractPhoneNumber } from '@/lib/twilio'
 import { GoogleGenAI } from '@google/genai'
-import { uploadImageToStorage, saveImageToGallery, getOrCreateWhatsAppUser } from '@/lib/database'
+import { createClient } from '@supabase/supabase-js'
+
+// Server-side Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+// Server-side image upload (Node.js compatible - uses Buffer instead of atob)
+async function uploadImageToStorageServer(base64Image: string): Promise<string | null> {
+  try {
+    // Extract base64 data and mime type
+    const matches = base64Image.match(/^data:(.+);base64,(.+)$/)
+    if (!matches) {
+      console.error('Invalid base64 image format')
+      return null
+    }
+
+    const mimeType = matches[1]
+    const base64Data = matches[2]
+    const extension = mimeType.split('/')[1] || 'png'
+
+    // Convert base64 to Buffer (Node.js compatible)
+    const buffer = Buffer.from(base64Data, 'base64')
+
+    // Generate unique filename
+    const uniqueName = `whatsapp-${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`
+
+    console.log(`Uploading image: ${uniqueName}, size: ${buffer.length} bytes`)
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('generated-images')
+      .upload(uniqueName, buffer, {
+        contentType: mimeType,
+        upsert: false
+      })
+
+    if (error) {
+      console.error('Supabase upload error:', error)
+      return null
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('generated-images')
+      .getPublicUrl(data.path)
+
+    console.log('Image uploaded successfully:', urlData.publicUrl)
+    return urlData.publicUrl
+  } catch (error) {
+    console.error('Error in uploadImageToStorageServer:', error)
+    return null
+  }
+}
+
+// Get or create WhatsApp user
+async function getOrCreateWhatsAppUserServer(phoneNumber: string): Promise<string> {
+  const { data: existing } = await supabase
+    .from('whatsapp_users')
+    .select('id')
+    .eq('phone_number', phoneNumber)
+    .single()
+
+  if (existing) return existing.id
+
+  const { data: newUser, error } = await supabase
+    .from('whatsapp_users')
+    .insert({ phone_number: phoneNumber })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error('Error creating WhatsApp user:', error)
+    return phoneNumber
+  }
+  return newUser.id
+}
+
+// Save image to gallery
+async function saveImageToGalleryServer(imageUrl: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('gallery_images')
+    .insert({
+      image_url: imageUrl,
+      user_id: userId,
+      archived: false
+    })
+
+  if (error) {
+    console.error('Error saving to gallery:', error)
+  }
+}
 
 // Initialize Gemini
 let ai: GoogleGenAI | null = null
@@ -278,16 +370,25 @@ export async function POST(request: NextRequest) {
     // If we generated an image, upload it and send via WhatsApp
     if (generatedImageUrl) {
       try {
-        // Upload to Supabase Storage to get public URL
-        const publicUrl = await uploadImageToStorage(generatedImageUrl)
+        console.log('Uploading generated image to Supabase...')
+        // Upload to Supabase Storage to get public URL (server-side version)
+        const publicUrl = await uploadImageToStorageServer(generatedImageUrl)
 
         if (publicUrl) {
+          console.log('Sending image via WhatsApp:', publicUrl)
           // Send image via WhatsApp
-          await sendWhatsAppMessage(message.from, 'Hier ist dein Produktfoto:', publicUrl)
+          const sent = await sendWhatsAppMessage(message.from, 'Hier ist dein Produktfoto:', publicUrl)
+          console.log('WhatsApp image send result:', sent)
 
           // Save to user's gallery
-          const whatsappUserId = await getOrCreateWhatsAppUser(phoneNumber)
-          await saveImageToGallery(publicUrl, `whatsapp:${whatsappUserId}`)
+          const whatsappUserId = await getOrCreateWhatsAppUserServer(phoneNumber)
+          await saveImageToGalleryServer(publicUrl, `whatsapp:${whatsappUserId}`)
+        } else {
+          console.error('Failed to get public URL from upload')
+          await sendWhatsAppMessage(
+            message.from,
+            'Das Bild wurde generiert, aber konnte nicht gesendet werden. Besuche lumino.studio um es anzusehen.'
+          )
         }
       } catch (uploadError) {
         console.error('Error uploading/sending image:', uploadError)
