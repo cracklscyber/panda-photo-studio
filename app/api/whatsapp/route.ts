@@ -211,8 +211,16 @@ export async function POST(request: NextRequest) {
 
     // Handle image if attached
     let hasImage = false
+    let userImageBase64: string | null = null
+
+    console.log('=== WhatsApp Message Debug ===')
+    console.log('Media URL:', message.mediaUrl)
+    console.log('Media Type:', message.mediaContentType)
+    console.log('Message Body:', message.body)
+
     if (message.mediaUrl && message.mediaContentType?.startsWith('image')) {
       try {
+        console.log('Fetching image from Twilio...')
         // Fetch the image from Twilio's URL
         const imageResponse = await fetch(message.mediaUrl, {
           headers: {
@@ -222,9 +230,14 @@ export async function POST(request: NextRequest) {
           }
         })
 
+        console.log('Twilio image response status:', imageResponse.status)
+
         if (imageResponse.ok) {
           const imageBuffer = await imageResponse.arrayBuffer()
           const base64Image = Buffer.from(imageBuffer).toString('base64')
+          userImageBase64 = base64Image
+
+          console.log('Image fetched successfully, size:', base64Image.length, 'chars')
 
           parts.push({
             inlineData: {
@@ -233,11 +246,17 @@ export async function POST(request: NextRequest) {
             }
           })
           hasImage = true
+        } else {
+          console.error('Failed to fetch image:', imageResponse.status, imageResponse.statusText)
         }
       } catch (imgError) {
         console.error('Error fetching WhatsApp image:', imgError)
       }
+    } else {
+      console.log('No image attached or not an image type')
     }
+
+    console.log('hasImage:', hasImage)
 
     // Add user message
     const userText = message.body || (hasImage ? '(Bild gesendet)' : '')
@@ -281,6 +300,11 @@ export async function POST(request: NextRequest) {
     // Trigger image generation if: direct keywords OR image with style description
     const isImageRequest = hasDirectKeywords || hasStyleDescription
 
+    console.log('hasDirectKeywords:', hasDirectKeywords)
+    console.log('hasStyleDescription:', hasStyleDescription)
+    console.log('isImageRequest:', isImageRequest)
+    console.log('Will generate image:', isImageRequest && hasImage)
+
     let responseText = ''
     let generatedImageUrl: string | null = null
 
@@ -300,38 +324,50 @@ export async function POST(request: NextRequest) {
           { text: imagePrompt }
         ].filter(Boolean)
 
-        console.log('Generating image with prompt:', imagePrompt)
+        console.log('=== Image Generation ===')
+        console.log('Prompt:', imagePrompt)
+        console.log('Has image part:', !!imagePart)
 
         const response = await withRetry(() =>
           getClient().models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: 'gemini-2.0-flash-exp',
             contents: imageContents,
             config: {
-              responseModalities: ['TEXT', 'IMAGE'],
+              responseModalities: ['Text', 'Image'],
             },
           })
         )
 
+        console.log('Gemini response received')
+        console.log('Candidates:', response.candidates?.length || 0)
+
         if (response.candidates && response.candidates[0]?.content?.parts) {
+          console.log('Response parts:', response.candidates[0].content.parts.length)
           for (const part of response.candidates[0].content.parts) {
+            console.log('Part type:', part.text ? 'text' : part.inlineData ? 'image' : 'unknown')
             if (part.text) {
               responseText += part.text
             } else if (part.inlineData) {
-              // For WhatsApp, we need to host the image somewhere
-              // For now, we'll note that the image was generated
-              // In production, upload to Supabase Storage and get public URL
               const imageData = part.inlineData.data
               const mimeType = part.inlineData.mimeType || 'image/png'
               generatedImageUrl = `data:${mimeType};base64,${imageData}`
+              console.log('Generated image received, size:', imageData?.length || 0, 'chars')
             }
           }
+        } else {
+          console.log('No candidates in response')
         }
 
-        if (!responseText) {
-          responseText = 'Hier ist dein Produktfoto! Schau es dir auf lumino.studio an.'
+        if (generatedImageUrl) {
+          responseText = responseText || 'Hier ist dein professionelles Produktfoto!'
+          console.log('Image generation successful')
+        } else {
+          responseText = responseText || 'Das Bild konnte nicht generiert werden. Bitte versuche es erneut.'
+          console.log('No image in response')
         }
-      } catch (error) {
-        console.error('Image generation error:', error)
+      } catch (error: any) {
+        console.error('Image generation error:', error?.message || error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
         responseText = 'Die Bildgenerierung ist gerade nicht verfügbar. Bitte versuche es in ein paar Minuten erneut.'
       }
     } else {
