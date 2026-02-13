@@ -108,6 +108,9 @@ function getClient(): GoogleGenAI {
 // Store conversation history in memory (in production, use Redis or database)
 const conversationHistory: Map<string, Array<{ role: string; content: string }>> = new Map()
 
+// Store user images across messages (so "direkt loslegen" can use previously sent image)
+const userImages: Map<string, { base64: string; mimeType: string; timestamp: number }> = new Map()
+
 // Retry wrapper with exponential backoff
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -239,6 +242,14 @@ export async function POST(request: NextRequest) {
 
           console.log('Image fetched successfully, size:', base64Image.length, 'chars')
 
+          // Store the image for later use (e.g., when user says "direkt loslegen")
+          userImages.set(phoneNumber, {
+            base64: base64Image,
+            mimeType: message.mediaContentType!,
+            timestamp: Date.now()
+          })
+          console.log('Image stored for user:', phoneNumber)
+
           parts.push({
             inlineData: {
               mimeType: message.mediaContentType,
@@ -254,6 +265,26 @@ export async function POST(request: NextRequest) {
       }
     } else {
       console.log('No image attached or not an image type')
+    }
+
+    // If no image in this message, check if we have a stored image from earlier
+    if (!hasImage && userImages.has(phoneNumber)) {
+      const storedImage = userImages.get(phoneNumber)!
+      // Only use if less than 30 minutes old
+      if (Date.now() - storedImage.timestamp < 30 * 60 * 1000) {
+        console.log('Using stored image from earlier message')
+        userImageBase64 = storedImage.base64
+        parts.push({
+          inlineData: {
+            mimeType: storedImage.mimeType,
+            data: storedImage.base64
+          }
+        })
+        hasImage = true
+      } else {
+        console.log('Stored image too old, ignoring')
+        userImages.delete(phoneNumber)
+      }
     }
 
     console.log('hasImage:', hasImage)
@@ -419,6 +450,10 @@ export async function POST(request: NextRequest) {
           // Save to user's gallery
           const whatsappUserId = await getOrCreateWhatsAppUserServer(phoneNumber)
           await saveImageToGalleryServer(publicUrl, `whatsapp:${whatsappUserId}`)
+
+          // Clear stored image after successful generation
+          userImages.delete(phoneNumber)
+          console.log('Cleared stored image for user:', phoneNumber)
         } else {
           console.error('Failed to get public URL from upload')
           await sendWhatsAppMessage(
