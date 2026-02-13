@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import twilio from 'twilio'
 
+// Force dynamic - no caching
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // Comprehensive test of the WhatsApp image generation pipeline
 export async function GET(request: NextRequest) {
   const results: Record<string, any> = {
@@ -153,5 +157,11 @@ export async function GET(request: NextRequest) {
     results.problems = failedSteps
   }
 
-  return NextResponse.json(results, { status: 200 })
+  return NextResponse.json(results, {
+    status: 200,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache'
+    }
+  })
 }
