@@ -155,11 +155,39 @@ export async function POST(request: NextRequest) {
     history.push({ role: 'user', content: userText })
 
     // Check if this is an image generation request
-    const isImageRequest =
-      message.body.toLowerCase().includes('direkt') ||
-      message.body.toLowerCase().includes('loslegen') ||
-      message.body.toLowerCase().includes('generier') ||
-      message.body.toLowerCase().includes('erstell')
+    const messageText = message.body.toLowerCase()
+
+    // Direct generation keywords
+    const hasDirectKeywords =
+      messageText.includes('direkt') ||
+      messageText.includes('loslegen') ||
+      messageText.includes('generier') ||
+      messageText.includes('erstell') ||
+      messageText.includes('mach mir') ||
+      messageText.includes('zeig mir')
+
+    // Style/description keywords that indicate user wants to generate
+    const hasStyleDescription = hasImage && (
+      messageText.includes('hintergrund') ||
+      messageText.includes('szene') ||
+      messageText.includes('foto') ||
+      messageText.includes('stil') ||
+      messageText.includes('minimalist') ||
+      messageText.includes('natur') ||
+      messageText.includes('studio') ||
+      messageText.includes('marmor') ||
+      messageText.includes('weiß') ||
+      messageText.includes('weiss') ||
+      messageText.includes('schwarz') ||
+      messageText.includes('holz') ||
+      messageText.includes('luxus') ||
+      messageText.includes('elegant') ||
+      messageText.includes('modern') ||
+      messageText.includes('professionell')
+    )
+
+    // Trigger image generation if: direct keywords OR image with style description
+    const isImageRequest = hasDirectKeywords || hasStyleDescription
 
     let responseText = ''
     let generatedImageUrl: string | null = null
@@ -167,12 +195,25 @@ export async function POST(request: NextRequest) {
     if (isImageRequest && hasImage) {
       // Generate image using Gemini
       try {
-        const imagePrompt = `${message.body}. Erstelle ein professionelles Produktfoto mit hoher Qualität, kommerziellem Stil und professioneller Beleuchtung.`
+        // Build image generation prompt with user's description
+        const userDescription = message.body || 'professionelles Produktfoto'
+        const imagePrompt = `Bearbeite dieses Produktbild: ${userDescription}. Erstelle ein professionelles Produktfoto mit hoher Qualität, kommerziellem Stil und professioneller Beleuchtung. Behalte das Produkt aus dem Original bei.`
+
+        // Get the image part from the parts array
+        const imagePart = parts.find(p => p.inlineData)
+
+        // Create content for image generation
+        const imageContents = [
+          imagePart,
+          { text: imagePrompt }
+        ].filter(Boolean)
+
+        console.log('Generating image with prompt:', imagePrompt)
 
         const response = await withRetry(() =>
           getClient().models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: parts.slice(-2), // Just the image and prompt
+            contents: imageContents,
             config: {
               responseModalities: ['TEXT', 'IMAGE'],
             },
