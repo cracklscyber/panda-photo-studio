@@ -82,42 +82,45 @@ export async function GET(request: NextRequest) {
     results.steps['4_supabase'] = { success: false, error: e.message }
   }
 
-  // Step 5: Test image upload to Supabase (if step 3 succeeded)
-  if (results.steps['3_gemini_image_gen']?.success && supabase) {
-    try {
-      // Create a simple test image (1x1 red pixel PNG)
-      const testImageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
-      const buffer = Buffer.from(testImageBase64, 'base64')
-      const fileName = `test-${Date.now()}.png`
+  // Step 5: Test image upload to Supabase
+  try {
+    // Create a simple test image (1x1 red pixel PNG)
+    const testImageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+    const buffer = Buffer.from(testImageBase64, 'base64')
+    const fileName = `test-${Date.now()}.png`
 
-      const { data, error } = await supabase.storage
-        .from('generated-images')
-        .upload(fileName, buffer, {
-          contentType: 'image/png',
-          upsert: false
-        })
+    // Try upload with upsert to avoid conflicts
+    const { data, error } = await supabase.storage
+      .from('generated-images')
+      .upload(fileName, buffer, {
+        contentType: 'image/png',
+        upsert: true
+      })
 
-      if (error) {
-        results.steps['5_supabase_upload'] = { success: false, error: error.message }
-      } else {
-        const { data: urlData } = supabase.storage
-          .from('generated-images')
-          .getPublicUrl(data.path)
-
-        results.steps['5_supabase_upload'] = {
-          success: true,
-          path: data.path,
-          publicUrl: urlData.publicUrl
-        }
-
-        // Clean up test file
-        await supabase.storage.from('generated-images').remove([fileName])
+    if (error) {
+      results.steps['5_supabase_upload'] = {
+        success: false,
+        error: error.message,
+        hint: error.message.includes('security')
+          ? 'Go to Supabase → Storage → generated-images → Policies → Add INSERT policy for anon'
+          : undefined
       }
-    } catch (e: any) {
-      results.steps['5_supabase_upload'] = { success: false, error: e.message }
+    } else {
+      const { data: urlData } = supabase.storage
+        .from('generated-images')
+        .getPublicUrl(data.path)
+
+      results.steps['5_supabase_upload'] = {
+        success: true,
+        path: data.path,
+        publicUrl: urlData.publicUrl
+      }
+
+      // Clean up test file
+      await supabase.storage.from('generated-images').remove([fileName])
     }
-  } else {
-    results.steps['5_supabase_upload'] = { skipped: true, reason: 'Previous step failed' }
+  } catch (e: any) {
+    results.steps['5_supabase_upload'] = { success: false, error: e.message }
   }
 
   // Step 6: Test Twilio client
