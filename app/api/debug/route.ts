@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Test image generation models
-  const imageModels = ['gemini-2.0-flash-exp', 'imagen-3.0-generate-002', 'gemini-2.0-flash-thinking-exp']
+  const imageModels = ['gemini-2.5-flash-image', 'gemini-2.5-flash-preview-05-20']
   results.image_models = {}
 
   for (const model of imageModels) {

@@ -330,10 +330,10 @@ export async function POST(request: NextRequest) {
 
         const response = await withRetry(() =>
           getClient().models.generateContent({
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-2.5-flash-image',
             contents: imageContents,
             config: {
-              responseModalities: ['Text', 'Image'],
+              responseModalities: ['TEXT', 'IMAGE'],
             },
           })
         )
