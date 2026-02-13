@@ -44,7 +44,7 @@ export default function ResetPassword() {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="glass-card rounded-3xl p-10 max-w-md w-full text-center">
-          <Lumino size="medium" />
+          <Lumino size="small" />
           <h1 className="text-2xl font-bold gradient-text mt-6">Passwort geändert!</h1>
           <p className="text-gray-400 mt-4">
             Dein Passwort wurde erfolgreich aktualisiert. Du wirst gleich weitergeleitet...
@@ -60,7 +60,7 @@ export default function ResetPassword() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
       <div className="glass-card rounded-3xl p-10 max-w-md w-full text-center">
-        <Lumino size="medium" />
+        <Lumino size="small" />
 
         <h1 className="text-2xl font-bold gradient-text mt-6">Neues Passwort</h1>
         <p className="text-gray-400 mt-2 mb-6">
