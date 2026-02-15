@@ -339,7 +339,8 @@ export async function POST(request: NextRequest) {
     let responseText = ''
     let generatedImageUrl: string | null = null
 
-    if (isImageRequest && hasImage) {
+    // SIMPLIFIED: Generate image whenever we have an image (either new or stored)
+    if (hasImage) {
       // Generate image using Gemini
       try {
         // Build image generation prompt with user's description
