@@ -3,15 +3,30 @@
 import { supabase } from './supabase'
 import { User } from '@supabase/supabase-js'
 
-// Sign up with email and password
-export async function signUp(email: string, password: string): Promise<{ user: User | null; error: string | null }> {
+// Sign up with email, password and name
+export async function signUp(email: string, password: string, name?: string): Promise<{ user: User | null; error: string | null }> {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: { display_name: name }
+    }
   })
 
   if (error) {
     return { user: null, error: error.message }
+  }
+
+  // Create customer profile with name
+  if (data.user && name) {
+    await supabase.from('customer_profiles').upsert(
+      {
+        user_id: data.user.id,
+        customer_name: name,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'user_id' }
+    )
   }
 
   return { user: data.user, error: null }

@@ -10,6 +10,7 @@ interface AuthModalProps {
 
 export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -37,12 +38,11 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
         onSuccess()
       }
     } else {
-      const { user, error } = await signUp(email, password)
+      const { user, error } = await signUp(email, password, name)
       if (error) {
         setError(error)
-      } else {
-        setSuccessMessage('Account erstellt! Bitte bestätige deine Email und logge dich dann ein.')
-        setMode('login')
+      } else if (user) {
+        onSuccess()
       }
     }
 
@@ -92,6 +92,20 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === 'register' && (
+            <div>
+              <label className="block text-sm text-gray-300 mb-1">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:border-purple-500 text-white placeholder-gray-500"
+                placeholder="Dein Name"
+                required
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-sm text-gray-300 mb-1">Email</label>
             <input
