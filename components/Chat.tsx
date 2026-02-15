@@ -103,7 +103,8 @@ export default function Chat({ initialImage, onClearInitialImage, userId }: Chat
         body: JSON.stringify({
           message: input,
           image: uploadedImage,
-          history: messages.map(m => ({ role: m.role, content: m.content }))
+          history: messages.map(m => ({ role: m.role, content: m.content })),
+          userId
         })
       })
 
@@ -173,7 +174,8 @@ export default function Chat({ initialImage, onClearInitialImage, userId }: Chat
         body: JSON.stringify({
           message: text,
           image: uploadedImage,
-          history: [...messages, userMessage].map(m => ({ role: m.role, content: m.content }))
+          history: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
+          userId
         })
       })
 

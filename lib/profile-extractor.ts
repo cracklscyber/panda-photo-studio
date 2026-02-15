@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
-import { CustomerProfile, upsertCustomerProfile } from './whatsapp-db'
+import { CustomerProfile, upsertCustomerProfile, upsertCustomerProfileByUserId } from './whatsapp-db'
 
 const EXTRACTION_PROMPT = `Du bist ein Daten-Extrahierer. Analysiere die Kundennachricht und extrahiere persönliche/geschäftliche Informationen.
 
@@ -43,15 +43,18 @@ function mergeAppendField(existing: string | null, newValue: string): string {
 
 export async function extractAndUpdateProfile(
   aiClient: GoogleGenAI,
-  whatsappUserId: string,
+  userId: string,
   userMessage: string,
-  currentProfile: CustomerProfile | null
+  currentProfile: CustomerProfile | null,
+  channel: 'whatsapp' | 'web' = 'whatsapp'
 ): Promise<void> {
   try {
+    if (!userMessage || userMessage.trim().length < 5) return
+
     // Build profile string for context
     const profileStr = currentProfile
       ? Object.entries(currentProfile)
-          .filter(([k, v]) => v && !['id', 'whatsapp_user_id', 'created_at', 'updated_at'].includes(k))
+          .filter(([k, v]) => v && !['id', 'whatsapp_user_id', 'user_id', 'created_at', 'updated_at'].includes(k))
           .map(([k, v]) => `${k}: ${v}`)
           .join('\n')
       : '(Neuer Kunde, kein Profil vorhanden)'
@@ -98,8 +101,12 @@ export async function extractAndUpdateProfile(
 
     if (Object.keys(updates).length === 0) return
 
-    await upsertCustomerProfile(whatsappUserId, updates)
-    console.log('Profile updated for user:', whatsappUserId, updates)
+    if (channel === 'web') {
+      await upsertCustomerProfileByUserId(userId, updates)
+    } else {
+      await upsertCustomerProfile(userId, updates)
+    }
+    console.log(`Profile updated (${channel}) for user:`, userId, updates)
   } catch (error) {
     console.error('Profile extraction error (non-critical):', error)
   }

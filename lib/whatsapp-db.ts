@@ -7,7 +7,8 @@ const supabase = createClient(
 
 export interface CustomerProfile {
   id: string
-  whatsapp_user_id: string
+  whatsapp_user_id: string | null
+  user_id: string | null
   customer_name: string | null
   company_name: string | null
   brand_colors: string | null
@@ -131,39 +132,127 @@ export async function saveWhatsAppMessage(
 
 // Trim chat history to keep only the most recent messages
 export async function trimChatHistory(
-  whatsappUserId: string,
-  max: number = 50
+  userId: string,
+  max: number = 50,
+  channel: 'whatsapp' | 'web' = 'whatsapp'
 ): Promise<void> {
-  // Get count of messages
   const { count, error: countError } = await supabase
     .from('chat_messages')
     .select('*', { count: 'exact', head: true })
-    .eq('user_id', whatsappUserId)
-    .eq('channel', 'whatsapp')
+    .eq('user_id', userId)
+    .eq('channel', channel)
 
   if (countError || !count || count <= max) return
 
-  // Get the ID of the oldest message we want to keep
   const { data: keepFrom } = await supabase
     .from('chat_messages')
     .select('created_at')
-    .eq('user_id', whatsappUserId)
-    .eq('channel', 'whatsapp')
+    .eq('user_id', userId)
+    .eq('channel', channel)
     .order('created_at', { ascending: false })
     .limit(1)
     .range(max - 1, max - 1)
 
   if (!keepFrom || keepFrom.length === 0) return
 
-  // Delete everything older than that
   const { error } = await supabase
     .from('chat_messages')
     .delete()
-    .eq('user_id', whatsappUserId)
-    .eq('channel', 'whatsapp')
+    .eq('user_id', userId)
+    .eq('channel', channel)
     .lt('created_at', keepFrom[0].created_at)
 
   if (error) {
     console.error('Error trimming chat history:', error)
+  }
+}
+
+// === Website user functions ===
+
+// Get customer profile by auth user ID
+export async function getCustomerProfileByUserId(userId: string): Promise<CustomerProfile | null> {
+  const { data, error } = await supabase
+    .from('customer_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
+
+  if (error || !data) return null
+  return data
+}
+
+// Create or update customer profile for website user
+export async function upsertCustomerProfileByUserId(
+  userId: string,
+  updates: Partial<Omit<CustomerProfile, 'id' | 'user_id' | 'whatsapp_user_id'>>
+): Promise<CustomerProfile | null> {
+  // Check if profile exists
+  const existing = await getCustomerProfileByUserId(userId)
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from('customer_profiles')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating customer profile:', error)
+      return null
+    }
+    return data
+  }
+
+  const { data, error } = await supabase
+    .from('customer_profiles')
+    .insert({ user_id: userId, ...updates, updated_at: new Date().toISOString() })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error creating customer profile:', error)
+    return null
+  }
+  return data
+}
+
+// Load web chat history
+export async function loadWebChatHistory(
+  userId: string,
+  limit: number = 50
+): Promise<Array<{ role: string; content: string }>> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('role, content')
+    .eq('user_id', userId)
+    .eq('channel', 'web')
+    .order('created_at', { ascending: true })
+    .limit(limit)
+
+  if (error) {
+    console.error('Error loading web chat history:', error)
+    return []
+  }
+  return data || []
+}
+
+// Save a web chat message
+export async function saveWebChatMessage(
+  userId: string,
+  role: 'user' | 'assistant',
+  content: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('chat_messages')
+    .insert({
+      user_id: userId,
+      role,
+      content,
+      channel: 'web'
+    })
+
+  if (error) {
+    console.error('Error saving web chat message:', error)
   }
 }

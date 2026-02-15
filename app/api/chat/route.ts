@@ -1,5 +1,13 @@
 import { GoogleGenAI } from '@google/genai'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  getCustomerProfileByUserId,
+  loadWebChatHistory,
+  saveWebChatMessage,
+  trimChatHistory,
+  CustomerProfile
+} from '@/lib/whatsapp-db'
+import { extractAndUpdateProfile } from '@/lib/profile-extractor'
 
 // Initialize client lazily at runtime, not build time
 let ai: GoogleGenAI | null = null
@@ -158,9 +166,44 @@ Du bist NUR für Text-Antworten zuständig. Sage NIEMALS "Hier ist dein Bild" od
 Wenn der Kunde "direkt loslegen" wählt, antworte: "Perfekt, ich generiere jetzt dein Bild! Einen Moment bitte..."
 Das eigentliche Bild wird von einem anderen System erstellt.`
 
+function buildWebSystemPrompt(profile: CustomerProfile | null): string {
+  if (!profile) return SYSTEM_PROMPT
+
+  const fields: Array<[string, string | null]> = [
+    ['Name', profile.customer_name],
+    ['Firma', profile.company_name],
+    ['Markenfarben', profile.brand_colors],
+    ['Bevorzugte Stile', profile.preferred_styles],
+    ['Lieblings-Hintergründe', profile.favorite_backgrounds],
+    ['Format-Präferenzen', profile.image_format_preferences],
+    ['Anrede', profile.address_form],
+    ['Notizen', profile.special_notes],
+  ]
+
+  const profileLines = fields
+    .filter(([, value]) => value)
+    .map(([label, value]) => `${label}: ${value}`)
+
+  if (profileLines.length === 0) return SYSTEM_PROMPT
+
+  return `${SYSTEM_PROMPT}
+
+KUNDENPROFIL:
+${profileLines.join('\n')}
+
+Nutze diese Informationen, um personalisierter zu antworten.`
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { message, image, history } = await request.json()
+    const { message, image, history, userId } = await request.json()
+
+    // Load profile if user is logged in
+    let profile: CustomerProfile | null = null
+    if (userId) {
+      profile = await getCustomerProfileByUserId(userId)
+    }
+    const systemPrompt = buildWebSystemPrompt(profile)
 
     // Check if this is ONLY an image upload (no text or just whitespace)
     const isImageOnlyUpload = image && (!message || message.trim() === '')
@@ -239,7 +282,7 @@ export async function POST(request: NextRequest) {
       const mimeType = image.split(';')[0].split(':')[1]
 
       const parts = [
-        { text: SYSTEM_PROMPT + '\n\n' },
+        { text: systemPrompt + '\n\n' },
         {
           inlineData: {
             mimeType: mimeType,
@@ -354,8 +397,18 @@ export async function POST(request: NextRequest) {
       responseText = await generateText(getClient(), parts)
     }
 
+    const finalResponse = responseText || 'Ich konnte keine Antwort generieren. Bitte versuche es erneut.'
+
+    // Save messages and extract profile (fire-and-forget) for logged-in users
+    if (userId) {
+      saveWebChatMessage(userId, 'user', message || '(Bild hochgeladen)').catch(e => console.error('Save user msg error:', e))
+      saveWebChatMessage(userId, 'assistant', finalResponse).catch(e => console.error('Save assistant msg error:', e))
+      trimChatHistory(userId, 50, 'web').catch(e => console.error('Trim error:', e))
+      extractAndUpdateProfile(getClient(), userId, message || '', profile, 'web').catch(e => console.error('Profile extract error:', e))
+    }
+
     return NextResponse.json({
-      message: responseText || 'Ich konnte keine Antwort generieren. Bitte versuche es erneut.',
+      message: finalResponse,
       generatedImage: generatedImage
     })
 
