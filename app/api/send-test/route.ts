@@ -30,12 +30,13 @@ export async function GET(request: NextRequest) {
     const parts = response.candidates?.[0]?.content?.parts || []
     const imagePart = parts.find((p: any) => p.inlineData)
 
-    if (!imagePart) {
+    if (!imagePart || !imagePart.inlineData?.data) {
       results.error = 'No image generated'
       return NextResponse.json(results)
     }
 
-    results.steps.push({ step: 1, status: 'OK', imageSize: imagePart.inlineData.data.length })
+    const imageData = imagePart.inlineData.data
+    results.steps.push({ step: 1, status: 'OK', imageSize: imageData.length })
 
     // Step 2: Upload to Supabase
     results.steps.push({ step: 2, action: 'Uploading to Supabase...' })
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
-    const buffer = Buffer.from(imagePart.inlineData.data, 'base64')
+    const buffer = Buffer.from(imageData, 'base64')
     const fileName = `direct-test-${Date.now()}.png`
 
     const { data, error } = await supabase.storage
