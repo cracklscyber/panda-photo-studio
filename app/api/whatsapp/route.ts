@@ -2,8 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseWhatsAppWebhook, sendWhatsAppMessage, extractPhoneNumber } from '@/lib/twilio'
 import { GoogleGenAI } from '@google/genai'
 import { createClient } from '@supabase/supabase-js'
+import {
+  getOrCreateWhatsAppUser,
+  getLinkedUserIdServer,
+  getCustomerProfile,
+  loadChatHistory,
+  saveWhatsAppMessage,
+  trimChatHistory,
+  CustomerProfile
+} from '@/lib/whatsapp-db'
+import { extractAndUpdateProfile } from '@/lib/profile-extractor'
 
-// Server-side Supabase client
+// Server-side Supabase client (for image upload + gallery)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -57,29 +67,6 @@ async function uploadImageToStorageServer(base64Image: string): Promise<string |
   }
 }
 
-// Get or create WhatsApp user
-async function getOrCreateWhatsAppUserServer(phoneNumber: string): Promise<string> {
-  const { data: existing } = await supabase
-    .from('whatsapp_users')
-    .select('id')
-    .eq('phone_number', phoneNumber)
-    .single()
-
-  if (existing) return existing.id
-
-  const { data: newUser, error } = await supabase
-    .from('whatsapp_users')
-    .insert({ phone_number: phoneNumber })
-    .select('id')
-    .single()
-
-  if (error) {
-    console.error('Error creating WhatsApp user:', error)
-    return phoneNumber
-  }
-  return newUser.id
-}
-
 // Save image to gallery
 async function saveImageToGalleryServer(imageUrl: string, userId: string): Promise<void> {
   const { error } = await supabase
@@ -104,9 +91,6 @@ function getClient(): GoogleGenAI {
   }
   return ai
 }
-
-// Store conversation history in memory (in production, use Redis or database)
-const conversationHistory: Map<string, Array<{ role: string; content: string }>> = new Map()
 
 // Store user images across messages (so "direkt loslegen" can use previously sent image)
 const userImages: Map<string, { base64: string; mimeType: string; timestamp: number }> = new Map()
@@ -176,6 +160,34 @@ WICHTIG:
 - NIEMALS Begrüßung wiederholen
 - Du generierst KEINE Bilder selbst - sage nur "Ich erstelle dein Bild..."`
 
+function buildSystemPrompt(profile: CustomerProfile | null): string {
+  if (!profile) return WHATSAPP_SYSTEM_PROMPT
+
+  const fields: Array<[string, string | null]> = [
+    ['Name', profile.customer_name],
+    ['Firma', profile.company_name],
+    ['Markenfarben', profile.brand_colors],
+    ['Bevorzugte Stile', profile.preferred_styles],
+    ['Lieblings-Hintergründe', profile.favorite_backgrounds],
+    ['Format-Präferenzen', profile.image_format_preferences],
+    ['Anrede', profile.address_form],
+    ['Notizen', profile.special_notes],
+  ]
+
+  const profileLines = fields
+    .filter(([, value]) => value)
+    .map(([label, value]) => `${label}: ${value}`)
+
+  if (profileLines.length === 0) return WHATSAPP_SYSTEM_PROMPT
+
+  return `${WHATSAPP_SYSTEM_PROMPT}
+
+KUNDENPROFIL:
+${profileLines.join('\n')}
+
+Nutze diese Informationen, um personalisierter zu antworten. Sprich den Kunden mit ${profile.address_form || 'Du'} an.`
+}
+
 // Handle incoming WhatsApp messages (POST from Twilio webhook)
 export async function POST(request: NextRequest) {
   try {
@@ -191,22 +203,25 @@ export async function POST(request: NextRequest) {
 
     console.log(`WhatsApp message from ${phoneNumber}: ${message.body}`)
 
-    // Get or create conversation history for this user
-    if (!conversationHistory.has(phoneNumber)) {
-      conversationHistory.set(phoneNumber, [])
-    }
-    const history = conversationHistory.get(phoneNumber)!
+    // Get or create WhatsApp user in DB
+    const whatsappUserId = await getOrCreateWhatsAppUser(phoneNumber)
+
+    // Load profile and chat history in parallel
+    const [profile, dbHistory] = await Promise.all([
+      getCustomerProfile(whatsappUserId),
+      loadChatHistory(whatsappUserId, 50),
+    ])
 
     // Prepare parts for Gemini
     const parts: any[] = []
 
-    // Add system prompt
-    parts.push({ text: WHATSAPP_SYSTEM_PROMPT + '\n\n' })
+    // Add system prompt with profile context
+    parts.push({ text: buildSystemPrompt(profile) + '\n\n' })
 
-    // Add conversation history (last 6 messages)
-    if (history.length > 0) {
-      const historyText = history
-        .slice(-6)
+    // Add conversation history (last 10 messages from DB)
+    if (dbHistory.length > 0) {
+      const historyText = dbHistory
+        .slice(-10)
         .map(m => `${m.role === 'user' ? 'Kunde' : 'Lumino'}: ${m.content}`)
         .join('\n')
       parts.push({ text: `Bisheriges Gespräch:\n${historyText}\n\n` })
@@ -214,6 +229,7 @@ export async function POST(request: NextRequest) {
 
     // Handle image if attached
     let hasImage = false
+    let freshImageInMessage = false
     let userImageBase64: string | null = null
 
     console.log('=== WhatsApp Message Debug ===')
@@ -257,6 +273,7 @@ export async function POST(request: NextRequest) {
             }
           })
           hasImage = true
+          freshImageInMessage = true
         } else {
           console.error('Failed to fetch image:', imageResponse.status, imageResponse.statusText)
         }
@@ -293,9 +310,6 @@ export async function POST(request: NextRequest) {
     const userText = message.body || (hasImage ? '(Bild gesendet)' : '')
     parts.push({ text: `Kunde: ${userText}\n\nLumino:` })
 
-    // Add to history
-    history.push({ role: 'user', content: userText })
-
     // Check if this is an image generation request
     const messageText = message.body.toLowerCase()
 
@@ -328,19 +342,19 @@ export async function POST(request: NextRequest) {
       messageText.includes('professionell')
     )
 
-    // Trigger image generation if: direct keywords OR image with style description
-    const isImageRequest = hasDirectKeywords || hasStyleDescription
+    // Only generate when user explicitly wants to (e.g. "direkt loslegen") with a stored image
+    // When a fresh image is sent, ALWAYS go through chat flow first (ask questions about style)
+    const shouldGenerateImage = hasImage && !freshImageInMessage && (hasDirectKeywords || hasStyleDescription)
 
     console.log('hasDirectKeywords:', hasDirectKeywords)
     console.log('hasStyleDescription:', hasStyleDescription)
-    console.log('isImageRequest:', isImageRequest)
-    console.log('Will generate image:', isImageRequest && hasImage)
+    console.log('freshImageInMessage:', freshImageInMessage)
+    console.log('shouldGenerateImage:', shouldGenerateImage)
 
     let responseText = ''
     let generatedImageUrl: string | null = null
 
-    // SIMPLIFIED: Generate image whenever we have an image (either new or stored)
-    if (hasImage) {
+    if (shouldGenerateImage) {
       // Generate image using Gemini
       try {
         // Build image generation prompt with user's description
@@ -424,13 +438,13 @@ export async function POST(request: NextRequest) {
       responseText = 'Entschuldigung, ich konnte deine Nachricht nicht verarbeiten. Bitte versuche es erneut.'
     }
 
-    // Add assistant response to history
-    history.push({ role: 'assistant', content: responseText })
+    // Save messages to DB
+    await saveWhatsAppMessage(whatsappUserId, 'user', userText)
+    await saveWhatsAppMessage(whatsappUserId, 'assistant', responseText)
 
-    // Keep only last 20 messages in history
-    if (history.length > 20) {
-      history.splice(0, history.length - 20)
-    }
+    // Fire-and-forget: trim history and extract profile updates
+    trimChatHistory(whatsappUserId, 50).catch(e => console.error('Trim error:', e))
+    extractAndUpdateProfile(getClient(), whatsappUserId, userText, profile).catch(e => console.error('Profile extract error:', e))
 
     // Send response via WhatsApp
     await sendWhatsAppMessage(message.from, responseText)
@@ -448,9 +462,9 @@ export async function POST(request: NextRequest) {
           const sent = await sendWhatsAppMessage(message.from, 'Hier ist dein Produktfoto:', publicUrl)
           console.log('WhatsApp image send result:', sent)
 
-          // Save to user's gallery
-          const whatsappUserId = await getOrCreateWhatsAppUserServer(phoneNumber)
-          await saveImageToGalleryServer(publicUrl, `whatsapp:${whatsappUserId}`)
+          // Save to user's gallery (use linked website user ID if available)
+          const linkedUserId = await getLinkedUserIdServer(whatsappUserId)
+          await saveImageToGalleryServer(publicUrl, linkedUserId || `whatsapp:${whatsappUserId}`)
 
           // Clear stored image after successful generation
           userImages.delete(phoneNumber)
