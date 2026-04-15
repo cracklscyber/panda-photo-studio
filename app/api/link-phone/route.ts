@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+export const dynamic = 'force-dynamic'
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
 
 function normalizePhoneNumber(phone: string): string {
   // Strip spaces, dashes, parentheses
@@ -22,6 +26,7 @@ function normalizePhoneNumber(phone: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabase()
     // Verify auth
     const authHeader = request.headers.get('authorization')
     if (!authHeader) {
