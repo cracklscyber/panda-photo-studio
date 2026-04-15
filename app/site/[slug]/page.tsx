@@ -4,12 +4,13 @@ import { FONT_MAP, WebsiteData } from '@/components/templates/types'
 import ElegantTemplate from '@/components/templates/ElegantTemplate'
 import DefaultTemplate from '@/components/templates/DefaultTemplate'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+export const dynamic = 'force-dynamic'
 
 export default async function SitePage({ params }: { params: { slug: string } }) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
   const { slug } = params
 
   const { data: site } = await supabase
