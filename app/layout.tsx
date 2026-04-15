@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { DM_Sans } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const dmSans = DM_Sans({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Panda Photo Studio',
-  description: 'Erstelle professionelle Produktfotos mit KI',
+  title: 'Romy AI — Deine Website per WhatsApp',
+  description: 'Romy baut und pflegt deine Website per WhatsApp-Chat. Kein Code, keine Vorlagen zum Ausfüllen — einfach schreiben.',
 }
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
-      <body className={inter.className}>{children}</body>
+      <body className={dmSans.className}>{children}</body>
     </html>
   )
 }
