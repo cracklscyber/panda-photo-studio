@@ -1,12 +1,40 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+let _supabase: SupabaseClient | null = null
+function supabaseClient(): SupabaseClient {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  }
+  return _supabase
+}
 
-const genai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! })
+let _genai: GoogleGenAI | null = null
+function genaiClient(): GoogleGenAI {
+  if (!_genai) {
+    _genai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! })
+  }
+  return _genai
+}
+
+// Proxy: any `supabase.xxx` call routes through supabaseClient()
+const supabase = new Proxy({} as SupabaseClient, {
+  get(_t, prop) {
+    const c = supabaseClient() as unknown as Record<string | symbol, unknown>
+    const v = c[prop]
+    return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
+  },
+})
+const genai = new Proxy({} as GoogleGenAI, {
+  get(_t, prop) {
+    const c = genaiClient() as unknown as Record<string | symbol, unknown>
+    const v = c[prop]
+    return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
+  },
+})
 
 // Available fonts for Luna to suggest
 const AVAILABLE_FONTS: Record<string, string> = {

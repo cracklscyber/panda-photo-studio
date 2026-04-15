@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { handleLunaMessage } from '@/lib/luna-agent'
 
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID!,
-  process.env.TWILIO_AUTH_TOKEN!
-)
+export const dynamic = 'force-dynamic'
+
+function getTwilio() {
+  return twilio(
+    process.env.TWILIO_ACCOUNT_SID!,
+    process.env.TWILIO_AUTH_TOKEN!
+  )
+}
 
 export async function POST(req: NextRequest) {
+  const twilioClient = getTwilio()
   const formData = await req.formData()
   const body = formData.get('Body') as string || ''
   const from = formData.get('From') as string || ''
