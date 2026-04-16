@@ -102,6 +102,7 @@ export default function Home() {
               <a href={WHATSAPP_LINK} className="hover:text-neutral-900">WhatsApp</a>
               <Link href="/impressum" className="hover:text-neutral-900">Impressum</Link>
               <Link href="/datenschutz" className="hover:text-neutral-900">Datenschutz</Link>
+              <Link href="/agb" className="hover:text-neutral-900">Nutzungsbedingungen</Link>
             </nav>
           </div>
           <p className="mt-8 text-[11px] leading-relaxed text-neutral-400">
