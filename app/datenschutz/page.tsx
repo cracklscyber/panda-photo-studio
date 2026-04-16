@@ -63,7 +63,7 @@ export default function Datenschutz() {
             Zur Beantwortung Ihrer Nachrichten und zur Erstellung/Pflege Ihrer Website werden Ihre Nachrichteninhalte an Dienste künstlicher Intelligenz übermittelt:
           </p>
           <ul className="mt-3 list-disc pl-5 space-y-2">
-            <li><strong>Google LLC / Google Ireland Ltd.</strong> — Gemini-Sprach- und Bildgenerierungsmodelle zur Beantwortung von Nachrichten und Bilderstellung. Datenverarbeitung nach EU-Standardvertragsklauseln. Google verwendet API-Eingaben im bezahlten Tarif nicht zum Training der Modelle.</li>
+            <li><strong>Anthropic PBC</strong> (USA) — Claude-Sprachmodell zur Beantwortung von Nachrichten und Website-Erstellung. Datenverarbeitung nach EU-Standardvertragsklauseln. Anthropic verwendet API-Eingaben nicht zum Training der Modelle.</li>
           </ul>
           <p className="mt-3">
             Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung). Die Übermittlung in Drittländer ist durch Standardvertragsklauseln und/oder DPF-Zertifizierung abgesichert.
@@ -94,7 +94,7 @@ export default function Datenschutz() {
             <li>Meta Platforms Ireland Ltd. (WhatsApp Business Platform)</li>
             <li>Vercel Inc. (Hosting)</li>
             <li>Supabase Inc. (Datenbank, EU-Hosting)</li>
-            <li>Google LLC / Google Ireland Ltd. (KI-Verarbeitung)</li>
+            <li>Anthropic PBC (KI-Verarbeitung)</li>
           </ul>
           <p className="mt-3">
             Mit allen Auftragsverarbeitern bestehen bzw. werden Verträge gemäß Art. 28 DSGVO geschlossen.

@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { GoogleGenAI } from '@google/genai'
+import Anthropic from '@anthropic-ai/sdk'
 
 let _supabase: SupabaseClient | null = null
 function supabaseClient(): SupabaseClient {
@@ -12,25 +12,18 @@ function supabaseClient(): SupabaseClient {
   return _supabase
 }
 
-let _genai: GoogleGenAI | null = null
-function genaiClient(): GoogleGenAI {
-  if (!_genai) {
-    _genai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! })
+let _anthropic: Anthropic | null = null
+function anthropicClient(): Anthropic {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
   }
-  return _genai
+  return _anthropic
 }
 
 // Proxy: any `supabase.xxx` call routes through supabaseClient()
 const supabase = new Proxy({} as SupabaseClient, {
   get(_t, prop) {
     const c = supabaseClient() as unknown as Record<string | symbol, unknown>
-    const v = c[prop]
-    return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
-  },
-})
-const genai = new Proxy({} as GoogleGenAI, {
-  get(_t, prop) {
-    const c = genaiClient() as unknown as Record<string | symbol, unknown>
     const v = c[prop]
     return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
   },
@@ -108,16 +101,16 @@ ${Object.entries(AVAILABLE_FONTS).map(([key, desc]) => `- ${key}: ${desc}`).join
 - Die Website-URL ist: [slug].luna.site (in Zukunft auch eigene Domain möglich)`
 
 interface ConversationMessage {
-  role: 'user' | 'model'
+  role: 'user' | 'assistant'
   content: string
 }
 
-// Tool definitions for Gemini
-const TOOLS = [
+// Tool definitions for Claude
+const TOOLS: Anthropic.Tool[] = [
   {
     name: 'update_website',
     description: 'Aktualisiert ein einzelnes Feld der Website. Nutze dies für: business_name, hero_title, hero_subtitle, about_text, address, phone_display, email, description, color_primary, color_secondary, font, style, slug',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: 'Der Feldname (z.B. hero_title, color_primary, font, style)' },
@@ -129,7 +122,7 @@ const TOOLS = [
   {
     name: 'set_opening_hours',
     description: 'Setzt die Öffnungszeiten der Website',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         hours: {
@@ -143,7 +136,7 @@ const TOOLS = [
   {
     name: 'add_service',
     description: 'Fügt eine neue Leistung/Service hinzu',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Name der Leistung' },
@@ -156,7 +149,7 @@ const TOOLS = [
   {
     name: 'remove_service',
     description: 'Entfernt eine Leistung anhand des Namens',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Name der Leistung die entfernt werden soll' },
@@ -167,7 +160,7 @@ const TOOLS = [
   {
     name: 'set_services',
     description: 'Setzt alle Leistungen auf einmal (ersetzt bestehende)',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         services: {
@@ -190,7 +183,7 @@ const TOOLS = [
   {
     name: 'add_button',
     description: 'Fügt einen Button zur Website hinzu (WhatsApp, Termin buchen, Anrufen, Custom)',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         type: { type: 'string', enum: ['whatsapp', 'booking', 'call', 'custom'], description: 'Button-Typ' },
@@ -203,7 +196,7 @@ const TOOLS = [
   {
     name: 'remove_button',
     description: 'Entfernt einen Button anhand des Typs',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         type: { type: 'string', description: 'Button-Typ der entfernt werden soll' },
@@ -214,7 +207,7 @@ const TOOLS = [
   {
     name: 'add_offer',
     description: 'Erstellt ein neues Angebot auf der Website',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Angebots-Titel' },
@@ -226,7 +219,7 @@ const TOOLS = [
   {
     name: 'remove_offer',
     description: 'Entfernt ein Angebot anhand des Titels',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Titel des Angebots das entfernt werden soll' },
@@ -237,7 +230,7 @@ const TOOLS = [
   {
     name: 'add_gallery_image',
     description: 'Fügt ein Bild zur Galerie hinzu',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'Bild-URL' },
@@ -249,7 +242,7 @@ const TOOLS = [
   {
     name: 'publish_website',
     description: 'Setzt den Status der Website auf "published" und macht sie live. Nutze dies nach dem Onboarding.',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {},
     },
@@ -257,7 +250,7 @@ const TOOLS = [
   {
     name: 'create_website',
     description: 'Erstellt eine neue Website für einen Kunden. Nutze dies beim Onboarding wenn du genug Infos hast.',
-    parameters: {
+    input_schema: {
       type: 'object',
       properties: {
         slug: { type: 'string', description: 'URL-Slug (z.B. "friseur-marco"). Kleinbuchstaben, keine Leerzeichen, Bindestriche erlaubt.' },
@@ -450,6 +443,8 @@ async function saveConversationHistory(phone: string, messages: ConversationMess
 
 // Main agent function
 export async function handleLunaMessage(phone: string, message: string, imageUrl?: string): Promise<string> {
+  const anthropic = anthropicClient()
+
   // 1. Look up existing website for this phone
   const { data: website } = await supabase
     .from('luna_websites')
@@ -483,93 +478,98 @@ export async function handleLunaMessage(phone: string, message: string, imageUrl
   // 3. Get conversation history
   const history = await getConversationHistory(phone)
 
-  // 4. Build message with optional image
-  let userMessage = message
-  if (imageUrl) {
-    userMessage = `[Kunde hat ein Bild geschickt: ${imageUrl}]\n${message}`
+  // 4. Build user message with optional image
+  let userContent: Anthropic.ContentBlockParam[]
+  if (imageUrl && imageUrl.startsWith('data:')) {
+    // Base64 image from Meta Cloud API
+    const [header, base64Data] = imageUrl.split(',')
+    const mediaType = header.match(/data:(.*);/)?.[1] || 'image/jpeg'
+    userContent = [
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data: base64Data,
+        },
+      },
+      { type: 'text', text: message || 'Kunde hat ein Bild geschickt.' },
+    ]
+  } else {
+    userContent = [{ type: 'text', text: message || 'Hallo' }]
   }
 
-  // 5. Call Gemini with tools
-  const fullSystemPrompt = SYSTEM_PROMPT + websiteContext
-
-  const contents = [
+  // 5. Build messages array for Claude
+  const claudeMessages: Anthropic.MessageParam[] = [
     ...history.map(msg => ({
-      role: msg.role as 'user' | 'model',
-      parts: [{ text: msg.content }],
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
     })),
-    { role: 'user' as const, parts: [{ text: userMessage }] },
+    { role: 'user', content: userContent },
   ]
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toolDeclarations = TOOLS as any[]
+  const fullSystemPrompt = SYSTEM_PROMPT + websiteContext
 
-  let response = await genai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents,
-    config: {
-      systemInstruction: fullSystemPrompt,
-      tools: [{ functionDeclarations: toolDeclarations }] as any,
-    },
+  // 6. Call Claude with tools
+  let response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: fullSystemPrompt,
+    tools: TOOLS,
+    messages: claudeMessages,
   })
 
-  // 6. Process tool calls in a loop
+  // 7. Process tool calls in a loop
   let maxIterations = 10
-  const toolResults: string[] = []
 
-  while (maxIterations > 0) {
-    const candidate = response.candidates?.[0]
-    if (!candidate) break
+  while (response.stop_reason === 'tool_use' && maxIterations > 0) {
+    // Extract tool use blocks
+    const toolUseBlocks = response.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+    )
 
-    const parts = candidate.content?.parts || []
-    const functionCalls = parts.filter(p => p.functionCall)
-
-    if (functionCalls.length === 0) break
-
-    // Execute all function calls
-    const functionResponses = []
-    for (const part of functionCalls) {
-      const fc = part.functionCall!
-      const result = await executeTool(fc.name!, (fc.args || {}) as Record<string, unknown>, websiteId, phone)
-      toolResults.push(result)
-      functionResponses.push({
-        name: fc.name,
-        response: { result },
+    // Execute all tool calls
+    const toolResults: Anthropic.ToolResultBlockParam[] = []
+    for (const toolUse of toolUseBlocks) {
+      const result = await executeTool(
+        toolUse.name,
+        (toolUse.input || {}) as Record<string, unknown>,
+        websiteId,
+        phone
+      )
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: result,
       })
     }
 
-    // Send results back to Gemini
-    response = await genai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        ...contents,
-        { role: 'model' as const, parts },
-        {
-          role: 'user' as const,
-          parts: functionResponses.map(fr => ({
-            functionResponse: fr,
-          })),
-        },
-      ],
-      config: {
-        systemInstruction: fullSystemPrompt,
-        tools: [{ functionDeclarations: toolDeclarations }] as any,
-      },
+    // Send results back to Claude
+    claudeMessages.push({ role: 'assistant', content: response.content })
+    claudeMessages.push({ role: 'user', content: toolResults })
+
+    response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: fullSystemPrompt,
+      tools: TOOLS,
+      messages: claudeMessages,
     })
 
     maxIterations--
   }
 
-  // 7. Extract final text response
-  const finalParts = response.candidates?.[0]?.content?.parts || []
-  const textResponse = finalParts
-    .filter(p => p.text)
-    .map(p => p.text)
-    .join('\n')
-    .trim() || 'Ich konnte deine Nachricht leider nicht verarbeiten. Versuch es nochmal!'
+  // 8. Extract final text response
+  const textBlocks = response.content.filter(
+    (block): block is Anthropic.TextBlock => block.type === 'text'
+  )
+  const textResponse = textBlocks.map(b => b.text).join('\n').trim()
+    || 'Ich konnte deine Nachricht leider nicht verarbeiten. Versuch es nochmal!'
 
-  // 8. Save conversation history
-  history.push({ role: 'user', content: userMessage })
-  history.push({ role: 'model', content: textResponse })
+  // 9. Save conversation history (text only for storage)
+  const userMessageText = message || (imageUrl ? '[Bild]' : 'Hallo')
+  history.push({ role: 'user', content: userMessageText })
+  history.push({ role: 'assistant', content: textResponse })
   await saveConversationHistory(phone, history)
 
   return textResponse
