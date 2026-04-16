@@ -18,31 +18,42 @@ export async function GET(req: NextRequest) {
 
 // ── Meta Cloud API: Incoming messages (POST) ──
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-
-  // Meta sends various webhook events — only process messages
-  const entry = body.entry?.[0]
-  const changes = entry?.changes?.[0]
-  const value = changes?.value
-
-  // Ignore status updates (delivered, read, etc.)
-  if (!value?.messages?.length) {
+  let body: any
+  try {
+    body = await req.json()
+  } catch {
     return NextResponse.json({ status: 'ok' })
   }
 
-  const message = value.messages[0]
-  const phone = message.from // e.g. "491729256983"
+  const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+  if (!message?.from) {
+    return NextResponse.json({ status: 'ok' })
+  }
+
+  // Fire-and-forget: respond to Meta immediately, process in background.
+  // Meta times out webhooks after ~5s; AI calls can take longer.
+  processMessage(message).catch((err) => {
+    console.error('processMessage error:', err)
+  })
+
+  return NextResponse.json({ status: 'ok' })
+}
+
+async function processMessage(message: any) {
+  const phone = message.from as string
   const phoneFormatted = '+' + phone
 
-  // Extract text and/or image
   let text = ''
   let imageUrl: string | undefined
 
   if (message.type === 'text') {
     text = message.text?.body || ''
   } else if (message.type === 'image') {
-    // Download image from Meta
-    imageUrl = await getMediaUrl(message.image.id)
+    try {
+      imageUrl = await getMediaUrl(message.image.id)
+    } catch (err) {
+      console.error('getMediaUrl failed:', err)
+    }
     text = message.image?.caption || ''
   } else if (message.type === 'document' || message.type === 'video') {
     text = '[Dokument/Video erhalten — bitte sende Bilder oder Text]'
@@ -50,22 +61,19 @@ export async function POST(req: NextRequest) {
     text = message.text?.body || ''
   }
 
-  if (!phone) {
-    return NextResponse.json({ status: 'ok' })
+  let reply: string
+  try {
+    reply = await handleLunaMessage(phoneFormatted, text, imageUrl)
+  } catch (err) {
+    console.error('Luna agent error:', err)
+    reply = 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!'
   }
 
   try {
-    // Process with Luna agent
-    const response = await handleLunaMessage(phoneFormatted, text, imageUrl)
-
-    // Send response via Meta Cloud API
-    await sendWhatsAppMessage(phone, response)
-  } catch (error) {
-    console.error('Luna agent error:', error)
-    await sendWhatsAppMessage(phone, 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!')
+    await sendWhatsAppMessage(phone, reply)
+  } catch (err) {
+    console.error('sendWhatsAppMessage failed:', err)
   }
-
-  return NextResponse.json({ status: 'ok' })
 }
 
 // ── Send a text message via Meta Cloud API ──
