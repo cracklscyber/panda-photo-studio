@@ -1,61 +1,120 @@
 import { NextRequest, NextResponse } from 'next/server'
-import twilio from 'twilio'
 import { handleLunaMessage } from '@/lib/luna-agent'
 
 export const dynamic = 'force-dynamic'
 
-function getTwilio() {
-  return twilio(
-    process.env.TWILIO_ACCOUNT_SID!,
-    process.env.TWILIO_AUTH_TOKEN!
-  )
+// ── Meta Cloud API: Webhook verification (GET) ──
+export async function GET(req: NextRequest) {
+  const params = req.nextUrl.searchParams
+  const mode = params.get('hub.mode')
+  const token = params.get('hub.verify_token')
+  const challenge = params.get('hub.challenge')
+
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    return new NextResponse(challenge, { status: 200 })
+  }
+  return new NextResponse('Forbidden', { status: 403 })
 }
 
+// ── Meta Cloud API: Incoming messages (POST) ──
 export async function POST(req: NextRequest) {
-  const twilioClient = getTwilio()
-  const formData = await req.formData()
-  const body = formData.get('Body') as string || ''
-  const from = formData.get('From') as string || ''
-  const numMedia = parseInt(formData.get('NumMedia') as string || '0')
+  const body = await req.json()
 
-  // Extract phone number (remove "whatsapp:" prefix)
-  const phone = from.replace('whatsapp:', '')
+  // Meta sends various webhook events — only process messages
+  const entry = body.entry?.[0]
+  const changes = entry?.changes?.[0]
+  const value = changes?.value
 
-  if (!phone) {
-    return new NextResponse('<Response></Response>', {
-      headers: { 'Content-Type': 'text/xml' },
-    })
+  // Ignore status updates (delivered, read, etc.)
+  if (!value?.messages?.length) {
+    return NextResponse.json({ status: 'ok' })
   }
 
-  // Check for image
+  const message = value.messages[0]
+  const phone = message.from // e.g. "491729256983"
+  const phoneFormatted = '+' + phone
+
+  // Extract text and/or image
+  let text = ''
   let imageUrl: string | undefined
-  if (numMedia > 0) {
-    imageUrl = formData.get('MediaUrl0') as string || undefined
+
+  if (message.type === 'text') {
+    text = message.text?.body || ''
+  } else if (message.type === 'image') {
+    // Download image from Meta
+    imageUrl = await getMediaUrl(message.image.id)
+    text = message.image?.caption || ''
+  } else if (message.type === 'document' || message.type === 'video') {
+    text = '[Dokument/Video erhalten — bitte sende Bilder oder Text]'
+  } else {
+    text = message.text?.body || ''
+  }
+
+  if (!phone) {
+    return NextResponse.json({ status: 'ok' })
   }
 
   try {
     // Process with Luna agent
-    const response = await handleLunaMessage(phone, body, imageUrl)
+    const response = await handleLunaMessage(phoneFormatted, text, imageUrl)
 
-    // Send response via Twilio
-    await twilioClient.messages.create({
-      body: response,
-      from: process.env.TWILIO_WHATSAPP_NUMBER!,
-      to: from,
-    })
+    // Send response via Meta Cloud API
+    await sendWhatsAppMessage(phone, response)
   } catch (error) {
     console.error('Luna agent error:', error)
-
-    // Send error message
-    await twilioClient.messages.create({
-      body: 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!',
-      from: process.env.TWILIO_WHATSAPP_NUMBER!,
-      to: from,
-    })
+    await sendWhatsAppMessage(phone, 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!')
   }
 
-  // Return empty TwiML response (we send via API instead)
-  return new NextResponse('<Response></Response>', {
-    headers: { 'Content-Type': 'text/xml' },
+  return NextResponse.json({ status: 'ok' })
+}
+
+// ── Send a text message via Meta Cloud API ──
+async function sendWhatsAppMessage(to: string, text: string) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const token = process.env.WHATSAPP_TOKEN
+
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text },
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('WhatsApp send error:', err)
+    throw new Error(`WhatsApp API error: ${res.status}`)
+  }
+}
+
+// ── Download media (images) from Meta ──
+async function getMediaUrl(mediaId: string): Promise<string> {
+  const token = process.env.WHATSAPP_TOKEN
+
+  // Step 1: Get media URL from Meta
+  const res = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+    headers: { Authorization: `Bearer ${token}` },
   })
+  const data = await res.json()
+
+  // Step 2: Download the actual media and convert to base64 data URL
+  // (Meta media URLs require auth, so we fetch and convert)
+  const mediaRes = await fetch(data.url, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const buffer = await mediaRes.arrayBuffer()
+  const base64 = Buffer.from(buffer).toString('base64')
+  const mimeType = data.mime_type || 'image/jpeg'
+
+  return `data:${mimeType};base64,${base64}`
 }
