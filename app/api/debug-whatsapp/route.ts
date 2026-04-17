@@ -25,7 +25,7 @@ export async function GET() {
   ]
 
   const phones: Record<string, unknown> = {}
-  const wabaIds = new Set<string>()
+  const wabaIds: string[] = []
 
   for (const { label, id } of phoneIdsToCheck) {
     const r = await graphGet(
@@ -35,7 +35,7 @@ export async function GET() {
     phones[label] = { id, ...r }
     const wabaId = (r.body as { whatsapp_business_account?: { id: string } })
       ?.whatsapp_business_account?.id
-    if (wabaId) wabaIds.add(wabaId)
+    if (wabaId && !wabaIds.includes(wabaId)) wabaIds.push(wabaId)
   }
 
   // For each WABA we discovered, list subscribed apps (the webhook targets)
