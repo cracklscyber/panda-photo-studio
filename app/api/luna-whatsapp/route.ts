@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { waitUntil } from '@vercel/functions'
 import { handleLunaMessage } from '@/lib/luna-agent'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
@@ -80,11 +82,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   }
 
-  // Fire-and-forget: respond to Meta immediately, process in background.
-  // Meta times out webhooks after ~5s; AI calls can take longer.
-  processMessage(message).catch((err) => {
-    console.error('processMessage error:', err)
-  })
+  // waitUntil keeps the container alive after the response so the AI call + send actually completes.
+  waitUntil(
+    processMessage(message).catch(async (err) => {
+      console.error('processMessage error:', err)
+      await logWebhookHit('process_error', {
+        from: message?.from,
+        error: (err as Error).message,
+        stack: (err as Error).stack?.split('\n').slice(0, 5),
+      }).catch(() => {})
+    })
+  )
 
   return NextResponse.json({ status: 'ok' })
 }
