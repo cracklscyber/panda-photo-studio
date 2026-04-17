@@ -16,6 +16,17 @@ Für diesen Test: antworte einfach natürlich auf die Nachricht des Kunden.`
 
 export async function GET(req: NextRequest) {
   const message = req.nextUrl.searchParams.get('message') || 'Hallo Romy, wer bist du?'
+  const debug = req.nextUrl.searchParams.get('debug') === '1'
+
+  if (debug) {
+    const envKeys = Object.keys(process.env).filter(k => k.startsWith('VERCEL_') || k === 'VERCEL')
+    const envInfo: Record<string, unknown> = {}
+    for (const k of envKeys) {
+      const v = process.env[k] || ''
+      envInfo[k] = { length: v.length, prefix: v.slice(0, 12) }
+    }
+    return NextResponse.json({ env: envInfo })
+  }
 
   const t0 = Date.now()
   const log: Array<{ step: string; ms: number; detail?: unknown }> = []
