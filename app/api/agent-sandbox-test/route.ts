@@ -36,13 +36,10 @@ export async function GET(req: NextRequest) {
   try {
     mark('start', { message })
 
-    // On Vercel, OIDC is injected automatically — no token needed.
-    // Locally, fall back to VERCEL_TOKEN from .env.local.
-    const onVercel = process.env.VERCEL === '1'
     sandbox = await Sandbox.create({
       teamId: process.env.VERCEL_TEAM_ID!,
       projectId: process.env.VERCEL_PROJECT_ID!,
-      ...(onVercel ? {} : { token: process.env.VERCEL_TOKEN! }),
+      token: process.env.VERCEL_TOKEN!,
       timeout: 120_000,
     })
     mark('sandbox_created', { id: sandbox.sandboxId })
