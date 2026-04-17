@@ -94,11 +94,19 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     ])
     mark('script_written')
 
+    // Forward the key under multiple env names; whichever Claude Code
+    // recognises for this token format (sk-ant-oat01-... is an OAuth token,
+    // sk-ant-api03-... is a regular API key) will pick it up.
+    const apiKey = process.env.ANTHROPIC_API_KEY!
     const run = await sandbox.runCommand({
       cmd: 'node',
       args: ['/tmp/agent.mjs'],
       cwd: '/tmp',
-      env: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY! },
+      env: {
+        ANTHROPIC_API_KEY: apiKey,
+        CLAUDE_CODE_OAUTH_TOKEN: apiKey,
+        ANTHROPIC_AUTH_TOKEN: apiKey,
+      },
     })
     const stdout = await run.stdout()
     const stderr = await run.stderr()
