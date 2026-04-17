@@ -99,19 +99,20 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     ])
     mark('script_written')
 
-    // Forward the key under multiple env names; whichever Claude Code
-    // recognises for this token format (sk-ant-oat01-... is an OAuth token,
-    // sk-ant-api03-... is a regular API key) will pick it up.
-    const apiKey = process.env.ANTHROPIC_API_KEY!
+    // Forward auth. sk-ant-oat01-* is a Claude Code OAuth token and must be
+    // passed as CLAUDE_CODE_OAUTH_TOKEN only; passing it as ANTHROPIC_API_KEY
+    // or ANTHROPIC_AUTH_TOKEN causes the CLI to route it to the wrong auth path
+    // and Anthropic rejects it with "Invalid API key".
+    const credential = process.env.ANTHROPIC_API_KEY!
+    const isOAuth = credential.startsWith('sk-ant-oat')
+    const envForRun: Record<string, string> = isOAuth
+      ? { CLAUDE_CODE_OAUTH_TOKEN: credential }
+      : { ANTHROPIC_API_KEY: credential }
     const run = await sandbox.runCommand({
       cmd: 'node',
       args: ['/tmp/agent.mjs'],
       cwd: '/tmp',
-      env: {
-        ANTHROPIC_API_KEY: apiKey,
-        CLAUDE_CODE_OAUTH_TOKEN: apiKey,
-        ANTHROPIC_AUTH_TOKEN: apiKey,
-      },
+      env: envForRun,
     })
     const stdout = await run.stdout()
     const stderr = await run.stderr()
