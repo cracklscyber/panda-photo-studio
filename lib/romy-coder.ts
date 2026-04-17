@@ -34,8 +34,10 @@ export interface RomyCoderResult {
   cost_usd: number | null
   sandbox_id: string | null
   error?: string
+  error_step?: string
   stdout_tail?: string
   stderr_tail?: string
+  log?: Array<{ step: string; ms: number; detail?: unknown }>
 }
 
 interface RomyCoderInput {
@@ -54,18 +56,29 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
   const agentEnvVar = isOAuth ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY'
 
   let sandbox: Sandbox | null = null
+  const log: Array<{ step: string; ms: number; detail?: unknown }> = []
+  const mark = (step: string, detail?: unknown) => log.push({ step, ms: Date.now() - t0, detail })
+  let currentStep = 'init'
 
   try {
+    currentStep = 'sandbox_create'
     sandbox = await Sandbox.create({
       apiKey: process.env.E2B_API_KEY!,
       timeoutMs: 5 * 60_000,
       envs: { [agentEnvVar]: credential },
     })
+    mark('sandbox_created', { id: sandbox.sandboxId })
 
-    await sandbox.commands.run('mkdir -p /workspace')
+    currentStep = 'mkdir_workspace'
+    const mk = await sandbox.commands.run('mkdir -p /workspace', { onStderr: () => {} })
+    mark('mkdir_workspace', { exitCode: mk.exitCode })
 
+    currentStep = 'list_existing'
     const existingFiles = await listSiteFiles(slug).catch(() => [])
+    mark('existing_files', { count: existingFiles.length })
+
     for (const file of existingFiles) {
+      currentStep = `download_${file.name}`
       const buf = await downloadSiteFile(slug, file.name)
       if (!buf) continue
       const target = `/workspace/${file.name}`
@@ -79,9 +92,11 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
       )
     }
 
+    currentStep = 'npm_install'
     const install = await sandbox.commands.run(
-      'cd /tmp && npm init -y >/dev/null 2>&1 && npm install @anthropic-ai/claude-agent-sdk 2>&1 | tail -3'
+      'cd /tmp && npm init -y >/dev/null 2>&1 && npm install @anthropic-ai/claude-agent-sdk 2>&1 | tail -5'
     )
+    mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-300) })
     if (install.exitCode !== 0) {
       throw new Error(`npm install failed: ${install.stderr.slice(-400)}`)
     }
@@ -165,10 +180,18 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
   } : null,
 }))
 `
+    currentStep = 'script_write'
     await sandbox.files.write('/tmp/agent.mjs', agentScript)
+    mark('script_written')
 
+    currentStep = 'agent_run'
     const run = await sandbox.commands.run('cd /tmp && node /tmp/agent.mjs', {
       timeoutMs: 4 * 60_000,
+    })
+    mark('agent_run', {
+      exitCode: run.exitCode,
+      stdout_len: run.stdout.length,
+      stderr_len: run.stderr.length,
     })
 
     let parsed: {
@@ -212,8 +235,10 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       sandbox_id: sandbox.sandboxId,
       stdout_tail: run.stdout.slice(-1500),
       stderr_tail: run.stderr.slice(-800),
+      log,
     }
   } catch (err) {
+    mark('error', { step: currentStep, message: (err as Error).message })
     return {
       ok: false,
       reply: 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!',
@@ -223,6 +248,8 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       cost_usd: null,
       sandbox_id: sandbox?.sandboxId || null,
       error: (err as Error).message,
+      error_step: currentStep,
+      log,
     }
   } finally {
     if (sandbox) {
