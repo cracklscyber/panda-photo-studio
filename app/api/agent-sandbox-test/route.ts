@@ -31,16 +31,21 @@ export async function GET(req: NextRequest) {
   const t0 = Date.now()
   const log: Array<{ step: string; ms: number; detail?: unknown }> = []
   const mark = (step: string, detail?: unknown) => log.push({ step, ms: Date.now() - t0, detail })
+  const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
   let sandbox: Sandbox | null = null
   try {
-    mark('start', { message })
+    mark('start', { message, reqId })
 
+    // Cache-bust: Vercel Sandbox SDK marks methods with "use step", which gets
+    // step-cached by the Workflow runtime when inputs are identical. Vary inputs
+    // per request via REQ_ID so every call produces a fresh sandbox.
     sandbox = await Sandbox.create({
       teamId: process.env.VERCEL_TEAM_ID!,
       projectId: process.env.VERCEL_PROJECT_ID!,
       token: process.env.VERCEL_TOKEN!,
       timeout: 120_000,
+      env: { REQ_ID: reqId },
     })
     mark('sandbox_created', { id: sandbox.sandboxId })
 
@@ -48,7 +53,7 @@ export async function GET(req: NextRequest) {
       cmd: 'sh',
       args: [
         '-c',
-        'cd /tmp && npm init -y >/dev/null 2>&1 && npm install @anthropic-ai/claude-agent-sdk 2>&1 | tail -3',
+        `echo "req=${reqId}" >/dev/null; cd /tmp && npm init -y >/dev/null 2>&1 && npm install @anthropic-ai/claude-agent-sdk 2>&1 | tail -3`,
       ],
     })
     mark('npm_install', { exitCode: install.exitCode })
