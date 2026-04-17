@@ -1,7 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { handleLunaMessage } from '@/lib/luna-agent'
 
 export const dynamic = 'force-dynamic'
+
+async function logWebhookHit(kind: string, detail: unknown) {
+  try {
+    const sb = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const entry = {
+      role: 'user' as const,
+      content: JSON.stringify({ ts: new Date().toISOString(), kind, detail }),
+    }
+    const { data } = await sb
+      .from('luna_conversations')
+      .select('messages')
+      .eq('phone', '__hook__')
+      .single()
+    const existing = (data?.messages || []) as { role: string; content: string }[]
+    const next = [...existing, entry].slice(-50)
+    await sb
+      .from('luna_conversations')
+      .upsert(
+        { phone: '__hook__', messages: next, updated_at: new Date().toISOString() },
+        { onConflict: 'phone' }
+      )
+  } catch {
+    // swallow — logging must not break the webhook
+  }
+}
 
 // ── Meta Cloud API: Webhook verification (GET) ──
 export async function GET(req: NextRequest) {
@@ -10,7 +39,14 @@ export async function GET(req: NextRequest) {
   const token = params.get('hub.verify_token')
   const challenge = params.get('hub.challenge')
 
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+  const tokenMatch = token === process.env.WHATSAPP_VERIFY_TOKEN
+  logWebhookHit('verify', {
+    mode,
+    token_match: tokenMatch,
+    has_token_env: !!process.env.WHATSAPP_VERIFY_TOKEN,
+  }).catch(() => {})
+
+  if (mode === 'subscribe' && tokenMatch) {
     return new NextResponse(challenge, { status: 200 })
   }
   return new NextResponse('Forbidden', { status: 403 })
@@ -22,8 +58,22 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json()
   } catch {
+    logWebhookHit('post_parse_fail', {}).catch(() => {})
     return NextResponse.json({ status: 'ok' })
   }
+
+  // Log EVERY incoming POST so we can see what Meta actually sends
+  const change = body?.entry?.[0]?.changes?.[0]
+  const value = change?.value
+  logWebhookHit('post', {
+    field: change?.field,
+    messaging_product: value?.messaging_product,
+    display_phone_number: value?.metadata?.display_phone_number,
+    phone_number_id: value?.metadata?.phone_number_id,
+    message_type: value?.messages?.[0]?.type,
+    from: value?.messages?.[0]?.from,
+    statuses: value?.statuses?.map((s: { status: string }) => s.status),
+  }).catch(() => {})
 
   const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
   if (!message?.from) {
