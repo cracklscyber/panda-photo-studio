@@ -40,11 +40,11 @@ export async function GET(req: NextRequest) {
   const challenge = params.get('hub.challenge')
 
   const tokenMatch = token === process.env.WHATSAPP_VERIFY_TOKEN
-  logWebhookHit('verify', {
+  await logWebhookHit('verify', {
     mode,
     token_match: tokenMatch,
     has_token_env: !!process.env.WHATSAPP_VERIFY_TOKEN,
-  }).catch(() => {})
+  })
 
   if (mode === 'subscribe' && tokenMatch) {
     return new NextResponse(challenge, { status: 200 })
@@ -58,14 +58,14 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json()
   } catch {
-    logWebhookHit('post_parse_fail', {}).catch(() => {})
+    await logWebhookHit('post_parse_fail', {})
     return NextResponse.json({ status: 'ok' })
   }
 
   // Log EVERY incoming POST so we can see what Meta actually sends
   const change = body?.entry?.[0]?.changes?.[0]
   const value = change?.value
-  logWebhookHit('post', {
+  await logWebhookHit('post', {
     field: change?.field,
     messaging_product: value?.messaging_product,
     display_phone_number: value?.metadata?.display_phone_number,
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     message_type: value?.messages?.[0]?.type,
     from: value?.messages?.[0]?.from,
     statuses: value?.statuses?.map((s: { status: string }) => s.status),
-  }).catch(() => {})
+  })
 
   const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
   if (!message?.from) {
