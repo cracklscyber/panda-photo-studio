@@ -223,7 +223,7 @@ export default function DefaultTemplate({ site: w, fontFamily }: TemplateProps) 
       <footer className="py-8 px-6" style={{ borderTop: `1px solid ${borderColor}` }}>
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm" style={{ color: textMuted }}>&copy; {new Date().getFullYear()} {w.business_name}</p>
-          <p className="text-xs" style={{ color: isDark ? 'rgb(55,65,81)' : 'rgb(209,213,219)' }}>Erstellt mit Luna</p>
+          <p className="text-xs" style={{ color: isDark ? 'rgb(55,65,81)' : 'rgb(209,213,219)' }}>Erstellt mit Romy</p>
         </div>
       </footer>
     </div>

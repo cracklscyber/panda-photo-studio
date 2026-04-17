@@ -357,7 +357,7 @@ export default function ElegantTemplate({ site: w, fontFamily }: TemplateProps) 
           &copy; {new Date().getFullYear()} {w.business_name}
         </p>
         <p className="text-xs mt-2" style={{ color: '#C8C4CC' }}>
-          Erstellt mit Luna
+          Erstellt mit Romy
         </p>
       </footer>
     </div>
