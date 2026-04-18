@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { waitUntil } from '@vercel/functions'
 import { runRomyCoder } from '@/lib/romy-coder'
+import { routeMessage } from '@/lib/romy-router'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -193,24 +194,38 @@ async function processMessage(message: {
 
   let reply: string
   try {
-    const result = await runRomyCoder({
-      slug,
-      userMessage: text || '(leere Nachricht)',
-      imageUrl,
-      history,
-    })
-    reply = result.reply
-    await logWebhookHit('coder_result', {
+    const routed = await routeMessage(history, text || '(leere Nachricht)', !!imageUrl)
+    await logWebhookHit('router_decision', {
       phone,
-      slug,
-      ok: result.ok,
-      files_changed: result.files_changed,
-      cost_usd: result.cost_usd,
-      duration_ms: result.duration_ms,
-      error: result.error,
+      intent: routed.intent,
+      classify_ms: routed.classify_ms,
+      chat_ms: routed.chat_ms,
+      classify_usage: routed.classify_usage,
+      chat_usage: routed.chat_usage,
     })
+
+    if (routed.intent === 'chat' && routed.chat_reply) {
+      reply = routed.chat_reply
+    } else {
+      const result = await runRomyCoder({
+        slug,
+        userMessage: text || '(leere Nachricht)',
+        imageUrl,
+        history,
+      })
+      reply = result.reply
+      await logWebhookHit('coder_result', {
+        phone,
+        slug,
+        ok: result.ok,
+        files_changed: result.files_changed,
+        cost_usd: result.cost_usd,
+        duration_ms: result.duration_ms,
+        error: result.error,
+      })
+    }
   } catch (err) {
-    console.error('runRomyCoder error:', err)
+    console.error('processMessage error:', err)
     reply = 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!'
   }
 
