@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { listSiteFiles } from '@/lib/supabase-storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,20 +8,41 @@ export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get('slug') || 'finaltest-01'
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   )
 
   const bucket = 'customer-sites'
 
-  const listRoot = await sb.storage.from(bucket).list('', { limit: 100 })
   const listSlug = await sb.storage.from(bucket).list(slug, { limit: 100 })
-  const listSlugSlash = await sb.storage.from(bucket).list(slug + '/', { limit: 100 })
+
+  let helperResult: { ok: boolean; files?: Array<{ name: string; size: number }>; error?: string }
+  try {
+    const files = await listSiteFiles(slug)
+    helperResult = { ok: true, files }
+  } catch (e) {
+    helperResult = { ok: false, error: (e as Error).message }
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
   return NextResponse.json({
+    env_inspection: {
+      url_length: url.length,
+      url_trimmed_length: url.trim().length,
+      url_starts_with: url.slice(0, 30),
+      url_ends_with: JSON.stringify(url.slice(-5)),
+      key_length: key.length,
+      key_trimmed_length: key.trim().length,
+      key_ends_with: JSON.stringify(key.slice(-5)),
+    },
     bucket,
     slug,
-    root: { data: listRoot.data, error: listRoot.error?.message },
-    by_slug: { data: listSlug.data, error: listSlug.error?.message },
-    by_slug_trailing_slash: { data: listSlugSlash.data, error: listSlugSlash.error?.message },
+    fresh_client_list: {
+      count: listSlug.data?.length || 0,
+      error: listSlug.error?.message,
+      first_name: listSlug.data?.[0]?.name,
+    },
+    helper_listSiteFiles: helperResult,
   })
 }
