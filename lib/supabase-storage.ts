@@ -16,20 +16,47 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
 
 const LIST_PAGE = 100
 
+type RawEntry = {
+  name: string
+  id: string | null
+  metadata: { size?: number } | null
+}
+
+async function rawList(prefix: string, limit: number, offset: number): Promise<RawEntry[]> {
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  const res = await fetch(`${baseUrl}/storage/v1/object/list/${BUCKET}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      prefix,
+      limit,
+      offset,
+      sortBy: { column: 'name', order: 'asc' },
+    }),
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(`list "${prefix}" ${res.status}: ${txt.slice(0, 200)}`)
+  }
+  const data = (await res.json()) as RawEntry[]
+  return Array.isArray(data) ? data : []
+}
+
 export async function listSiteFilesVerbose(
   slug: string
 ): Promise<{ files: Array<{ name: string; size: number }>; debug: unknown }> {
   const out: Array<{ name: string; size: number }> = []
-  const client = sb()
   const debug: Array<{ prefix: string; count: number; offset: number }> = []
   async function walk(prefix: string) {
     let offset = 0
     for (;;) {
-      const { data, error } = await client.storage
-        .from(BUCKET)
-        .list(prefix, { limit: LIST_PAGE, offset })
-      if (error) throw new Error(`list "${prefix}": ${error.message}`)
-      const page = data ?? []
+      const page = await rawList(prefix, LIST_PAGE, offset)
       debug.push({ prefix, count: page.length, offset })
       for (const entry of page) {
         const full = prefix ? `${prefix}/${entry.name}` : entry.name
@@ -37,7 +64,7 @@ export async function listSiteFilesVerbose(
         if (isFolder) {
           await walk(full)
         } else {
-          const size = (entry.metadata as { size?: number } | null)?.size ?? 0
+          const size = entry.metadata?.size ?? 0
           const rel =
             slug && full.startsWith(slug + '/') ? full.slice(slug.length + 1) : full
           out.push({ name: rel, size })
