@@ -14,29 +14,37 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
   return `${base}/storage/v1/object/public/${BUCKET}/${slug}/${path}`
 }
 
+const LIST_PAGE = 100
+
 export async function listSiteFilesVerbose(
   slug: string
 ): Promise<{ files: Array<{ name: string; size: number }>; debug: unknown }> {
   const out: Array<{ name: string; size: number }> = []
   const client = sb()
-  const debug: Array<{ prefix: string; count: number; raw: unknown }> = []
+  const debug: Array<{ prefix: string; count: number; offset: number }> = []
   async function walk(prefix: string) {
-    const { data, error } = await client.storage
-      .from(BUCKET)
-      .list(prefix, { limit: 1000 })
-    if (error) throw new Error(`list "${prefix}": ${error.message}`)
-    debug.push({ prefix, count: data?.length ?? 0, raw: data })
-    if (!data) return
-    for (const entry of data) {
-      const full = prefix ? `${prefix}/${entry.name}` : entry.name
-      const isFolder = entry.id === null || entry.id === undefined
-      if (isFolder) {
-        await walk(full)
-      } else {
-        const size = (entry.metadata as { size?: number } | null)?.size ?? 0
-        const rel = slug && full.startsWith(slug + '/') ? full.slice(slug.length + 1) : full
-        out.push({ name: rel, size })
+    let offset = 0
+    for (;;) {
+      const { data, error } = await client.storage
+        .from(BUCKET)
+        .list(prefix, { limit: LIST_PAGE, offset })
+      if (error) throw new Error(`list "${prefix}": ${error.message}`)
+      const page = data ?? []
+      debug.push({ prefix, count: page.length, offset })
+      for (const entry of page) {
+        const full = prefix ? `${prefix}/${entry.name}` : entry.name
+        const isFolder = entry.id === null || entry.id === undefined
+        if (isFolder) {
+          await walk(full)
+        } else {
+          const size = (entry.metadata as { size?: number } | null)?.size ?? 0
+          const rel =
+            slug && full.startsWith(slug + '/') ? full.slice(slug.length + 1) : full
+          out.push({ name: rel, size })
+        }
       }
+      if (page.length < LIST_PAGE) break
+      offset += LIST_PAGE
     }
   }
   await walk(slug)
