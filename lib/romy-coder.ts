@@ -6,12 +6,14 @@ import {
   sitePublicUrl,
 } from './supabase-storage'
 
+const WORKSPACE = '/home/user/workspace'
+
 const ROMY_CODER_SYSTEM_PROMPT = `Du bist Romy, eine freundliche WhatsApp-Assistentin die Websites für lokale Geschäfte erstellt.
 
-Du arbeitest in /workspace als dein Arbeitsverzeichnis. Dort liegen (falls vorhanden) die aktuellen Dateien der Kundenwebsite. Du kannst sie lesen, bearbeiten oder neue Dateien schreiben mit den Tools Read, Write, Edit, Glob, Grep.
+Du arbeitest in deinem aktuellen Arbeitsverzeichnis (cwd). Dort liegen (falls vorhanden) die aktuellen Dateien der Kundenwebsite. Du kannst sie lesen, bearbeiten oder neue Dateien schreiben mit den Tools Read, Write, Edit, Glob, Grep.
 
 ## Regeln für den Code
-- Die Haupt-Einstiegsseite ist immer /workspace/index.html.
+- Die Haupt-Einstiegsseite ist immer index.html im cwd.
 - Vollständiges, in sich geschlossenes HTML (<!doctype html>, <html>, <head>, <body>).
 - Bevorzugt einzelne index.html Datei. Nur wenn nötig, separate CSS/JS-Dateien daneben legen (styles.css, main.js etc.).
 - Mobile-first, modernes CSS (flex/grid), keine externen Frameworks außer Google Fonts (einbinden via <link>).
@@ -70,7 +72,9 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
     mark('sandbox_created', { id: sandbox.sandboxId })
 
     currentStep = 'mkdir_workspace'
-    const mk = await sandbox.commands.run('mkdir -p /workspace', { onStderr: () => {} })
+    const mk = await sandbox.commands.run(`mkdir -p ${WORKSPACE}`, {
+      onStderr: () => {},
+    })
     mark('mkdir_workspace', { exitCode: mk.exitCode })
 
     currentStep = 'list_existing'
@@ -81,9 +85,9 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
       currentStep = `download_${file.name}`
       const buf = await downloadSiteFile(slug, file.name)
       if (!buf) continue
-      const target = `/workspace/${file.name}`
+      const target = `${WORKSPACE}/${file.name}`
       const dir = target.substring(0, target.lastIndexOf('/'))
-      if (dir && dir !== '/workspace') {
+      if (dir && dir !== WORKSPACE) {
         await sandbox.commands.run(`mkdir -p ${JSON.stringify(dir)}`)
       }
       const b64 = buf.toString('base64')
@@ -134,7 +138,7 @@ function listAll(dir, base = dir) {
 
 const before = new Map()
 try {
-  for (const f of listAll('/workspace')) before.set(f.path, f.mtimeMs)
+  for (const f of listAll(${JSON.stringify(WORKSPACE)})) before.set(f.path, f.mtimeMs)
 } catch {}
 
 const stream = query({
@@ -143,7 +147,7 @@ const stream = query({
     model: 'claude-sonnet-4-6',
     maxTurns: 25,
     permissionMode: 'bypassPermissions',
-    cwd: '/workspace',
+    cwd: ${JSON.stringify(WORKSPACE)},
     allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
     systemPrompt: ${JSON.stringify(ROMY_CODER_SYSTEM_PROMPT)},
   },
@@ -162,7 +166,7 @@ for await (const msg of stream) {
 
 let changed = []
 try {
-  const after = listAll('/workspace')
+  const after = listAll(${JSON.stringify(WORKSPACE)})
   for (const f of after) {
     if (!before.has(f.path) || before.get(f.path) !== f.mtimeMs) changed.push(f.path)
   }
@@ -211,7 +215,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     for (const rel of changedFiles) {
       if (rel.startsWith('node_modules/') || rel.startsWith('.git/')) continue
       const readRes = await sandbox.commands.run(
-        `cat ${JSON.stringify('/workspace/' + rel)} | base64`
+        `cat ${JSON.stringify(WORKSPACE + '/' + rel)} | base64`
       )
       if (readRes.exitCode !== 0) continue
       const buf = Buffer.from(readRes.stdout.trim(), 'base64')
