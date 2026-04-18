@@ -22,6 +22,44 @@ export async function GET(req: NextRequest) {
   )
   const listInline = await sb2.storage.from(bucket).list(slug, { limit: 1000 })
 
+  // Raw HTTP replica of what SDK sends with limit:100 — to prove it's an SDK/fetch issue
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  let raw100: { status: number; len: number; first?: string; body?: string } = {
+    status: 0,
+    len: 0,
+  }
+  try {
+    const res = await fetch(`${baseUrl}/storage/v1/object/list/${bucket}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        prefix: slug,
+        limit: 100,
+        offset: 0,
+        sortBy: { column: 'name', order: 'asc' },
+      }),
+      cache: 'no-store',
+    })
+    const txt = await res.text()
+    let arr: unknown[] = []
+    try {
+      arr = JSON.parse(txt)
+    } catch {}
+    raw100 = {
+      status: res.status,
+      len: Array.isArray(arr) ? arr.length : -1,
+      first: Array.isArray(arr) && arr[0] ? ((arr[0] as { name?: string }).name ?? '?') : undefined,
+      body: txt.slice(0, 200),
+    }
+  } catch (e) {
+    raw100 = { status: -1, len: -1, body: (e as Error).message }
+  }
+
   let helperResult: { ok: boolean; files?: unknown; debug?: unknown; error?: string }
   try {
     const verbose = await listSiteFilesVerbose(slug)
@@ -56,5 +94,6 @@ export async function GET(req: NextRequest) {
       first_name: listInline.data?.[0]?.name,
     },
     helper_listSiteFiles: helperResult,
+    raw_fetch_limit_100: raw100,
   })
 }
