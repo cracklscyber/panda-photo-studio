@@ -6,8 +6,8 @@ let _sb: SupabaseClient | null = null
 function sb(): SupabaseClient {
   if (_sb) return _sb
   _sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   )
   return _sb
 }
