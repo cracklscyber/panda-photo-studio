@@ -98,12 +98,19 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
 
     currentStep = 'npm_install'
     const install = await sandbox.commands.run(
-      'cd /tmp && npm init -y >/dev/null 2>&1 && npm install @anthropic-ai/claude-agent-sdk 2>&1 | tail -5'
+      'cd /tmp && npm init -y >/dev/null 2>&1 && npm install --include=optional @anthropic-ai/claude-agent-sdk @anthropic-ai/claude-code 2>&1 | tail -8'
     )
-    mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-300) })
+    mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-400) })
     if (install.exitCode !== 0) {
       throw new Error(`npm install failed: ${install.stderr.slice(-400)}`)
     }
+
+    currentStep = 'locate_claude_bin'
+    const locate = await sandbox.commands.run(
+      'ls -la /tmp/node_modules/.bin/claude 2>&1; readlink -f /tmp/node_modules/.bin/claude 2>&1'
+    )
+    mark('locate_claude_bin', { stdout: locate.stdout.slice(-300) })
+    const claudeBin = '/tmp/node_modules/.bin/claude'
 
     const promptParts: string[] = []
     if (history.length > 0) {
@@ -150,6 +157,7 @@ const stream = query({
     cwd: ${JSON.stringify(WORKSPACE)},
     allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
     systemPrompt: ${JSON.stringify(ROMY_CODER_SYSTEM_PROMPT)},
+    pathToClaudeCodeExecutable: ${JSON.stringify(claudeBin)},
   },
 })
 
