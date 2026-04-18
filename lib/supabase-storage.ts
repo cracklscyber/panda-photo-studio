@@ -14,12 +14,18 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
   return `${base}/storage/v1/object/public/${BUCKET}/${slug}/${path}`
 }
 
-export async function listSiteFiles(slug: string): Promise<Array<{ name: string; size: number }>> {
+export async function listSiteFilesVerbose(
+  slug: string
+): Promise<{ files: Array<{ name: string; size: number }>; debug: unknown }> {
   const out: Array<{ name: string; size: number }> = []
   const client = sb()
+  const debug: Array<{ prefix: string; count: number; raw: unknown }> = []
   async function walk(prefix: string) {
-    const { data, error } = await client.storage.from(BUCKET).list(prefix, { limit: 1000 })
+    const { data, error } = await client.storage
+      .from(BUCKET)
+      .list(prefix, { limit: 1000 })
     if (error) throw new Error(`list "${prefix}": ${error.message}`)
+    debug.push({ prefix, count: data?.length ?? 0, raw: data })
     if (!data) return
     for (const entry of data) {
       const full = prefix ? `${prefix}/${entry.name}` : entry.name
@@ -34,7 +40,14 @@ export async function listSiteFiles(slug: string): Promise<Array<{ name: string;
     }
   }
   await walk(slug)
-  return out
+  return { files: out, debug }
+}
+
+export async function listSiteFiles(
+  slug: string
+): Promise<Array<{ name: string; size: number }>> {
+  const { files } = await listSiteFilesVerbose(slug)
+  return files
 }
 
 export async function downloadSiteFile(slug: string, path: string): Promise<Buffer | null> {

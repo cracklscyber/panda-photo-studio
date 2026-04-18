@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { listSiteFiles } from '@/lib/supabase-storage'
+import { listSiteFilesVerbose } from '@/lib/supabase-storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,10 +15,10 @@ export async function GET(req: NextRequest) {
 
   const listSlug = await sb.storage.from(bucket).list(slug, { limit: 100 })
 
-  let helperResult: { ok: boolean; files?: Array<{ name: string; size: number }>; error?: string }
+  let helperResult: { ok: boolean; files?: unknown; debug?: unknown; error?: string }
   try {
-    const files = await listSiteFiles(slug)
-    helperResult = { ok: true, files }
+    const verbose = await listSiteFilesVerbose(slug)
+    helperResult = { ok: true, files: verbose.files, debug: verbose.debug }
   } catch (e) {
     helperResult = { ok: false, error: (e as Error).message }
   }
