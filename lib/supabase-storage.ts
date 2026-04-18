@@ -2,14 +2,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const BUCKET = 'customer-sites'
 
-let _sb: SupabaseClient | null = null
 function sb(): SupabaseClient {
-  if (_sb) return _sb
-  _sb = createClient(
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
     process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   )
-  return _sb
 }
 
 export function sitePublicUrl(slug: string, path = 'index.html'): string {
@@ -19,16 +16,20 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
 
 export async function listSiteFiles(slug: string): Promise<Array<{ name: string; size: number }>> {
   const out: Array<{ name: string; size: number }> = []
+  const client = sb()
   async function walk(prefix: string) {
-    const { data, error } = await sb().storage.from(BUCKET).list(prefix, { limit: 1000 })
-    if (error) throw new Error(`list ${prefix}: ${error.message}`)
-    for (const entry of data || []) {
+    const { data, error } = await client.storage.from(BUCKET).list(prefix, { limit: 1000 })
+    if (error) throw new Error(`list "${prefix}": ${error.message}`)
+    if (!data) return
+    for (const entry of data) {
       const full = prefix ? `${prefix}/${entry.name}` : entry.name
-      if (entry.id === null) {
+      const isFolder = entry.id === null || entry.id === undefined
+      if (isFolder) {
         await walk(full)
       } else {
         const size = (entry.metadata as { size?: number } | null)?.size ?? 0
-        out.push({ name: full.slice(slug.length + 1), size })
+        const rel = slug && full.startsWith(slug + '/') ? full.slice(slug.length + 1) : full
+        out.push({ name: rel, size })
       }
     }
   }
