@@ -13,7 +13,7 @@ function sb(): SupabaseClient {
 }
 
 export function sitePublicUrl(slug: string, path = 'index.html'): string {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/+$/, '')
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
   return `${base}/storage/v1/object/public/${BUCKET}/${slug}/${path}`
 }
 

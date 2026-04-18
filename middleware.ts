@@ -16,7 +16,7 @@ export async function middleware(req: NextRequest) {
   const slug = parts[1]
   const rest = parts.slice(2)
 
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '')
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/+$/, '')
   if (!base) return pass('no-supabase-url')
   const indexUrl = `${base}/storage/v1/object/public/customer-sites/${encodeURIComponent(
     slug
