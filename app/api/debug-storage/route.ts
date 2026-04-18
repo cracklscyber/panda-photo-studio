@@ -68,18 +68,18 @@ export async function GET(req: NextRequest) {
     helperResult = { ok: false, error: (e as Error).message }
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  const urlRaw = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const keyRaw = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
   return NextResponse.json({
     env_inspection: {
-      url_length: url.length,
-      url_trimmed_length: url.trim().length,
-      url_starts_with: url.slice(0, 30),
-      url_ends_with: JSON.stringify(url.slice(-5)),
-      key_length: key.length,
-      key_trimmed_length: key.trim().length,
-      key_ends_with: JSON.stringify(key.slice(-5)),
+      url_length: urlRaw.length,
+      url_trimmed_length: urlRaw.trim().length,
+      url_starts_with: urlRaw.slice(0, 30),
+      url_ends_with: JSON.stringify(urlRaw.slice(-5)),
+      key_length: keyRaw.length,
+      key_trimmed_length: keyRaw.trim().length,
+      key_ends_with: JSON.stringify(keyRaw.slice(-5)),
     },
     bucket,
     slug,
