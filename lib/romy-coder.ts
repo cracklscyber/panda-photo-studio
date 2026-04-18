@@ -189,13 +189,26 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     mark('script_written')
 
     currentStep = 'agent_run'
-    const run = await sandbox.commands.run('cd /tmp && node /tmp/agent.mjs', {
-      timeoutMs: 4 * 60_000,
-    })
+    type CommandResult = { exitCode: number; stdout: string; stderr: string }
+    let run: CommandResult
+    try {
+      run = await sandbox.commands.run('cd /tmp && node /tmp/agent.mjs', {
+        timeoutMs: 4 * 60_000,
+      })
+    } catch (e) {
+      const errObj = e as { exitCode?: number; stdout?: string; stderr?: string; message?: string }
+      run = {
+        exitCode: errObj.exitCode ?? -1,
+        stdout: errObj.stdout ?? '',
+        stderr: errObj.stderr ?? errObj.message ?? String(e),
+      }
+    }
     mark('agent_run', {
       exitCode: run.exitCode,
       stdout_len: run.stdout.length,
       stderr_len: run.stderr.length,
+      stderr_tail: run.stderr.slice(-600),
+      stdout_tail: run.stdout.slice(-400),
     })
 
     let parsed: {
