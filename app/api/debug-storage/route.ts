@@ -15,6 +15,13 @@ export async function GET(req: NextRequest) {
 
   const listSlug = await sb.storage.from(bucket).list(slug, { limit: 100 })
 
+  // Inline reproduction of the helper: same construction, same call, same args.
+  const sb2 = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  )
+  const listInline = await sb2.storage.from(bucket).list(slug, { limit: 1000 })
+
   let helperResult: { ok: boolean; files?: unknown; debug?: unknown; error?: string }
   try {
     const verbose = await listSiteFilesVerbose(slug)
@@ -42,6 +49,11 @@ export async function GET(req: NextRequest) {
       count: listSlug.data?.length || 0,
       error: listSlug.error?.message,
       first_name: listSlug.data?.[0]?.name,
+    },
+    inline_second_client_list_1000: {
+      count: listInline.data?.length || 0,
+      error: listInline.error?.message,
+      first_name: listInline.data?.[0]?.name,
     },
     helper_listSiteFiles: helperResult,
   })
