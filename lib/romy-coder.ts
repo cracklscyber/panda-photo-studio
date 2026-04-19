@@ -46,64 +46,86 @@ export interface RomyCoderResult {
 const WARM_TIMEOUT_MS = 15 * 60_000
 const SERVICE_TAG = 'romy-coder-v1'
 
+const META_BUCKET = 'customer-sites'
+const META_PREFIX = '_meta'
+
+async function loadWarmMeta(slug: string): Promise<{ sandboxId: string; updatedAt: number } | null> {
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  const res = await fetch(
+    `${baseUrl}/storage/v1/object/${META_BUCKET}/${META_PREFIX}/${slug}.json`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: 'no-store' }
+  )
+  if (!res.ok) return null
+  try {
+    const j = (await res.json()) as { sandboxId?: string; updatedAt?: number }
+    if (!j.sandboxId) return null
+    return { sandboxId: j.sandboxId, updatedAt: j.updatedAt || 0 }
+  } catch {
+    return null
+  }
+}
+
+async function saveWarmMeta(slug: string, sandboxId: string): Promise<void> {
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  const body = JSON.stringify({ sandboxId, updatedAt: Date.now() })
+  await fetch(
+    `${baseUrl}/storage/v1/object/${META_BUCKET}/${META_PREFIX}/${slug}.json`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'x-upsert': 'true',
+      },
+      body,
+    }
+  ).catch(() => {})
+}
+
+async function clearWarmMeta(slug: string): Promise<void> {
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  await fetch(
+    `${baseUrl}/storage/v1/object/${META_BUCKET}/${META_PREFIX}/${slug}.json`,
+    { method: 'DELETE', headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  ).catch(() => {})
+}
+
 async function findWarmSandbox(
   slug: string,
   diag: (step: string, detail?: unknown) => void
 ): Promise<Sandbox | null> {
-  const apiKey = process.env.E2B_API_KEY || ''
-  diag('warm_key_hash', { head: apiKey.slice(0, 8), len: apiKey.length })
+  const meta = await loadWarmMeta(slug)
+  diag('warm_meta', meta ? { id: meta.sandboxId, ageMs: Date.now() - meta.updatedAt } : null)
+  if (!meta) return null
+  if (Date.now() - meta.updatedAt > WARM_TIMEOUT_MS) {
+    diag('warm_meta_stale', { ageMs: Date.now() - meta.updatedAt })
+    await clearWarmMeta(slug)
+    return null
+  }
   try {
-    const filtered = Sandbox.list({
-      apiKey,
-      query: {
-        metadata: { slug, service: SERVICE_TAG },
-        state: ['running', 'paused'],
-      },
-      limit: 5,
-    })
-    const items = await filtered.nextItems()
-    diag('warm_list_filtered', {
-      count: items.length,
-      ids: items.map((s) => ({ id: s.sandboxId, md: s.metadata })),
-    })
-    if (items.length === 0) {
-      const unfiltered = Sandbox.list({
-        apiKey,
-        query: { state: ['running', 'paused'] },
-        limit: 20,
-      })
-      const all = await unfiltered.nextItems()
-      diag('warm_list_unfiltered', {
-        count: all.length,
-        ids: all.map((s) => ({ id: s.sandboxId, md: s.metadata })),
-      })
-      const hit = all.find(
-        (s) => s.metadata?.slug === slug && s.metadata?.service === SERVICE_TAG
-      )
-      if (hit) {
-        diag('warm_fallback_hit', { id: hit.sandboxId })
-        items.push(hit)
-      }
-    }
-    const hit = items[0]
-    if (!hit) return null
-    const sb = await Sandbox.connect(hit.sandboxId, {
+    const sb = await Sandbox.connect(meta.sandboxId, {
       apiKey: process.env.E2B_API_KEY!,
     })
-    diag('warm_connect_ok', { id: hit.sandboxId })
+    diag('warm_connect_ok', { id: meta.sandboxId })
     const probe = await sb.commands.run('test -x /tmp/node_modules/.bin/claude && echo OK').catch(() => ({
       exitCode: 1,
       stdout: '',
       stderr: '',
     }))
-    diag('warm_probe', { exitCode: probe.exitCode, stdout: probe.stdout })
+    diag('warm_probe', { exitCode: probe.exitCode, stdout: probe.stdout.trim() })
     if (probe.exitCode !== 0 || !probe.stdout.includes('OK')) {
       await sb.kill().catch(() => {})
+      await clearWarmMeta(slug)
       return null
     }
     return sb
   } catch (e) {
-    diag('warm_error', { err: (e as Error).message })
+    diag('warm_connect_error', { err: (e as Error).message })
+    await clearWarmMeta(slug)
     return null
   }
 }
@@ -330,7 +352,11 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
         : 'Hmm, da ist etwas schiefgelaufen. Magst du es noch einmal versuchen?')
 
     const ok = run.exitCode === 0 && !parsed.result?.is_error
-    if (ok) preserveSandbox = true
+    if (ok) {
+      preserveSandbox = true
+      await saveWarmMeta(slug, sandbox.sandboxId)
+      mark('warm_meta_saved', { id: sandbox.sandboxId })
+    }
 
     return {
       ok,
