@@ -50,20 +50,41 @@ async function findWarmSandbox(
   slug: string,
   diag: (step: string, detail?: unknown) => void
 ): Promise<Sandbox | null> {
+  const apiKey = process.env.E2B_API_KEY || ''
+  diag('warm_key_hash', { head: apiKey.slice(0, 8), len: apiKey.length })
   try {
-    const paginator = Sandbox.list({
-      apiKey: process.env.E2B_API_KEY!,
+    const filtered = Sandbox.list({
+      apiKey,
       query: {
         metadata: { slug, service: SERVICE_TAG },
         state: ['running', 'paused'],
       },
       limit: 5,
     })
-    const items = await paginator.nextItems()
-    diag('warm_list', {
+    const items = await filtered.nextItems()
+    diag('warm_list_filtered', {
       count: items.length,
       ids: items.map((s) => ({ id: s.sandboxId, md: s.metadata })),
     })
+    if (items.length === 0) {
+      const unfiltered = Sandbox.list({
+        apiKey,
+        query: { state: ['running', 'paused'] },
+        limit: 20,
+      })
+      const all = await unfiltered.nextItems()
+      diag('warm_list_unfiltered', {
+        count: all.length,
+        ids: all.map((s) => ({ id: s.sandboxId, md: s.metadata })),
+      })
+      const hit = all.find(
+        (s) => s.metadata?.slug === slug && s.metadata?.service === SERVICE_TAG
+      )
+      if (hit) {
+        diag('warm_fallback_hit', { id: hit.sandboxId })
+        items.push(hit)
+      }
+    }
     const hit = items[0]
     if (!hit) return null
     const sb = await Sandbox.connect(hit.sandboxId, {
