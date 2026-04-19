@@ -52,7 +52,7 @@ async function findWarmSandbox(slug: string): Promise<Sandbox | null> {
       apiKey: process.env.E2B_API_KEY!,
       query: {
         metadata: { slug, service: SERVICE_TAG },
-        state: ['running'],
+        state: ['running', 'paused'],
       },
       limit: 5,
     })
