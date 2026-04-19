@@ -27,6 +27,23 @@ export async function GET(req: NextRequest) {
     out.all_running_error = (e as Error).message
   }
 
+  try {
+    const p1b = Sandbox.list({
+      apiKey: process.env.E2B_API_KEY!,
+      query: { state: ['running', 'paused'] },
+      limit: 20,
+    })
+    const all = await p1b.nextItems()
+    out.all_any_state = all.map((s) => ({
+      id: s.sandboxId,
+      metadata: s.metadata,
+      startedAt: s.startedAt,
+      endAt: s.endAt,
+    }))
+  } catch (e) {
+    out.all_any_state_error = (e as Error).message
+  }
+
   if (slug) {
     try {
       const p2 = Sandbox.list({
