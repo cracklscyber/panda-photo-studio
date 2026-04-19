@@ -292,15 +292,16 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
   } : null,
 }))
 `
+    const scriptPath = `/tmp/agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mjs`
     currentStep = 'script_write'
-    await sandbox.files.write('/tmp/agent.mjs', agentScript)
-    mark('script_written')
+    await sandbox.files.write(scriptPath, agentScript)
+    mark('script_written', { path: scriptPath })
 
     currentStep = 'agent_run'
     type CommandResult = { exitCode: number; stdout: string; stderr: string }
     let run: CommandResult
     try {
-      run = await sandbox.commands.run('cd /tmp && node /tmp/agent.mjs', {
+      run = await sandbox.commands.run(`cd /tmp && node ${scriptPath}`, {
         timeoutMs: 4 * 60_000,
         envs: { [agentEnvVar]: credential },
       })
