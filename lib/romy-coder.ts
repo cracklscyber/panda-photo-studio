@@ -46,7 +46,10 @@ export interface RomyCoderResult {
 const WARM_TIMEOUT_MS = 15 * 60_000
 const SERVICE_TAG = 'romy-coder-v1'
 
-async function findWarmSandbox(slug: string): Promise<Sandbox | null> {
+async function findWarmSandbox(
+  slug: string,
+  diag: (step: string, detail?: unknown) => void
+): Promise<Sandbox | null> {
   try {
     const paginator = Sandbox.list({
       apiKey: process.env.E2B_API_KEY!,
@@ -57,22 +60,29 @@ async function findWarmSandbox(slug: string): Promise<Sandbox | null> {
       limit: 5,
     })
     const items = await paginator.nextItems()
+    diag('warm_list', {
+      count: items.length,
+      ids: items.map((s) => ({ id: s.sandboxId, md: s.metadata })),
+    })
     const hit = items[0]
     if (!hit) return null
     const sb = await Sandbox.connect(hit.sandboxId, {
       apiKey: process.env.E2B_API_KEY!,
     })
+    diag('warm_connect_ok', { id: hit.sandboxId })
     const probe = await sb.commands.run('test -x /tmp/node_modules/.bin/claude && echo OK').catch(() => ({
       exitCode: 1,
       stdout: '',
       stderr: '',
     }))
+    diag('warm_probe', { exitCode: probe.exitCode, stdout: probe.stdout })
     if (probe.exitCode !== 0 || !probe.stdout.includes('OK')) {
       await sb.kill().catch(() => {})
       return null
     }
     return sb
-  } catch {
+  } catch (e) {
+    diag('warm_error', { err: (e as Error).message })
     return null
   }
 }
@@ -101,7 +111,7 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
 
   try {
     currentStep = 'warm_lookup'
-    sandbox = await findWarmSandbox(slug)
+    sandbox = await findWarmSandbox(slug, mark)
     wasWarm = !!sandbox
     mark('warm_lookup', { hit: wasWarm, id: sandbox?.sandboxId })
 
