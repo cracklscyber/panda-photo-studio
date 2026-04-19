@@ -331,13 +331,24 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     }
   } finally {
     if (sandbox) {
-      try {
-        if (preserveSandbox) {
+      if (preserveSandbox) {
+        try {
           await sandbox.setTimeout(WARM_TIMEOUT_MS)
-        } else {
-          await sandbox.kill()
+          mark('preserve_ok', { id: sandbox.sandboxId, timeoutMs: WARM_TIMEOUT_MS })
+        } catch (e) {
+          mark('preserve_failed', { id: sandbox.sandboxId, err: (e as Error).message })
+          try {
+            await sandbox.kill()
+          } catch {}
         }
-      } catch {}
+      } else {
+        try {
+          await sandbox.kill()
+          mark('killed', { id: sandbox.sandboxId })
+        } catch (e) {
+          mark('kill_failed', { err: (e as Error).message })
+        }
+      }
     }
   }
 }
