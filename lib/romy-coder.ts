@@ -35,11 +35,46 @@ export interface RomyCoderResult {
   duration_ms: number
   cost_usd: number | null
   sandbox_id: string | null
+  was_warm: boolean
   error?: string
   error_step?: string
   stdout_tail?: string
   stderr_tail?: string
   log?: Array<{ step: string; ms: number; detail?: unknown }>
+}
+
+const WARM_TIMEOUT_MS = 15 * 60_000
+const SERVICE_TAG = 'romy-coder-v1'
+
+async function findWarmSandbox(slug: string): Promise<Sandbox | null> {
+  try {
+    const paginator = Sandbox.list({
+      apiKey: process.env.E2B_API_KEY!,
+      query: {
+        metadata: { slug, service: SERVICE_TAG },
+        state: ['running'],
+      },
+      limit: 5,
+    })
+    const items = await paginator.nextItems()
+    const hit = items[0]
+    if (!hit) return null
+    const sb = await Sandbox.connect(hit.sandboxId, {
+      apiKey: process.env.E2B_API_KEY!,
+    })
+    const probe = await sb.commands.run('test -x /tmp/node_modules/.bin/claude && echo OK').catch(() => ({
+      exitCode: 1,
+      stdout: '',
+      stderr: '',
+    }))
+    if (probe.exitCode !== 0 || !probe.stdout.includes('OK')) {
+      await sb.kill().catch(() => {})
+      return null
+    }
+    return sb
+  } catch {
+    return null
+  }
 }
 
 interface RomyCoderInput {
@@ -58,51 +93,63 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
   const agentEnvVar = isOAuth ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY'
 
   let sandbox: Sandbox | null = null
+  let wasWarm = false
+  let preserveSandbox = false
   const log: Array<{ step: string; ms: number; detail?: unknown }> = []
   const mark = (step: string, detail?: unknown) => log.push({ step, ms: Date.now() - t0, detail })
   let currentStep = 'init'
 
   try {
-    currentStep = 'sandbox_create'
-    sandbox = await Sandbox.create({
-      apiKey: process.env.E2B_API_KEY!,
-      timeoutMs: 5 * 60_000,
-      envs: { [agentEnvVar]: credential },
-    })
-    mark('sandbox_created', { id: sandbox.sandboxId })
+    currentStep = 'warm_lookup'
+    sandbox = await findWarmSandbox(slug)
+    wasWarm = !!sandbox
+    mark('warm_lookup', { hit: wasWarm, id: sandbox?.sandboxId })
 
-    currentStep = 'mkdir_workspace'
-    const mk = await sandbox.commands.run(`mkdir -p ${WORKSPACE}`, {
-      onStderr: () => {},
-    })
-    mark('mkdir_workspace', { exitCode: mk.exitCode })
+    if (!sandbox) {
+      currentStep = 'sandbox_create'
+      sandbox = await Sandbox.create({
+        apiKey: process.env.E2B_API_KEY!,
+        timeoutMs: WARM_TIMEOUT_MS,
+        envs: { [agentEnvVar]: credential },
+        metadata: { slug, service: SERVICE_TAG },
+      })
+      mark('sandbox_created', { id: sandbox.sandboxId })
 
-    currentStep = 'list_existing'
-    const existingFiles = await listSiteFiles(slug).catch(() => [])
-    mark('existing_files', { count: existingFiles.length })
+      currentStep = 'mkdir_workspace'
+      const mk = await sandbox.commands.run(`mkdir -p ${WORKSPACE}`, {
+        onStderr: () => {},
+      })
+      mark('mkdir_workspace', { exitCode: mk.exitCode })
 
-    for (const file of existingFiles) {
-      currentStep = `download_${file.name}`
-      const buf = await downloadSiteFile(slug, file.name)
-      if (!buf) continue
-      const target = `${WORKSPACE}/${file.name}`
-      const dir = target.substring(0, target.lastIndexOf('/'))
-      if (dir && dir !== WORKSPACE) {
-        await sandbox.commands.run(`mkdir -p ${JSON.stringify(dir)}`)
+      currentStep = 'list_existing'
+      const existingFiles = await listSiteFiles(slug).catch(() => [])
+      mark('existing_files', { count: existingFiles.length })
+
+      for (const file of existingFiles) {
+        currentStep = `download_${file.name}`
+        const buf = await downloadSiteFile(slug, file.name)
+        if (!buf) continue
+        const target = `${WORKSPACE}/${file.name}`
+        const dir = target.substring(0, target.lastIndexOf('/'))
+        if (dir && dir !== WORKSPACE) {
+          await sandbox.commands.run(`mkdir -p ${JSON.stringify(dir)}`)
+        }
+        const b64 = buf.toString('base64')
+        await sandbox.commands.run(
+          `echo ${JSON.stringify(b64)} | base64 -d > ${JSON.stringify(target)}`
+        )
       }
-      const b64 = buf.toString('base64')
-      await sandbox.commands.run(
-        `echo ${JSON.stringify(b64)} | base64 -d > ${JSON.stringify(target)}`
-      )
-    }
 
-    currentStep = 'npm_install'
-    const install = await sandbox.commands.run(
-      'cd /tmp && npm init -y >/dev/null 2>&1 && npm install --include=optional @anthropic-ai/claude-agent-sdk @anthropic-ai/claude-code 2>&1 | tail -8'
-    )
-    mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-400) })
-    if (install.exitCode !== 0) {
-      throw new Error(`npm install failed: ${install.stderr.slice(-400)}`)
+      currentStep = 'npm_install'
+      const install = await sandbox.commands.run(
+        'cd /tmp && npm init -y >/dev/null 2>&1 && npm install --include=optional @anthropic-ai/claude-agent-sdk @anthropic-ai/claude-code 2>&1 | tail -8'
+      )
+      mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-400) })
+      if (install.exitCode !== 0) {
+        throw new Error(`npm install failed: ${install.stderr.slice(-400)}`)
+      }
+    } else {
+      mark('bootstrap_skipped', { reason: 'warm_reconnect' })
     }
 
     currentStep = 'locate_claude_bin'
@@ -202,6 +249,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     try {
       run = await sandbox.commands.run('cd /tmp && node /tmp/agent.mjs', {
         timeoutMs: 4 * 60_000,
+        envs: { [agentEnvVar]: credential },
       })
     } catch (e) {
       const errObj = e as { exitCode?: number; stdout?: string; stderr?: string; message?: string }
@@ -250,14 +298,18 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
         ? 'Fertig! Schau gerne mal auf deiner Seite nach.'
         : 'Hmm, da ist etwas schiefgelaufen. Magst du es noch einmal versuchen?')
 
+    const ok = run.exitCode === 0 && !parsed.result?.is_error
+    if (ok) preserveSandbox = true
+
     return {
-      ok: run.exitCode === 0 && !parsed.result?.is_error,
+      ok,
       reply,
       files_changed: uploaded,
       site_url: sitePublicUrl(slug),
       duration_ms: Date.now() - t0,
       cost_usd: parsed.result?.total_cost_usd ?? null,
       sandbox_id: sandbox.sandboxId,
+      was_warm: wasWarm,
       stdout_tail: run.stdout.slice(-1500),
       stderr_tail: run.stderr.slice(-800),
       log,
@@ -272,6 +324,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       duration_ms: Date.now() - t0,
       cost_usd: null,
       sandbox_id: sandbox?.sandboxId || null,
+      was_warm: wasWarm,
       error: (err as Error).message,
       error_step: currentStep,
       log,
@@ -279,7 +332,11 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
   } finally {
     if (sandbox) {
       try {
-        await sandbox.kill()
+        if (preserveSandbox) {
+          await sandbox.setTimeout(WARM_TIMEOUT_MS)
+        } else {
+          await sandbox.kill()
+        }
       } catch {}
     }
   }
