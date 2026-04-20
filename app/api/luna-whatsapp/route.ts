@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { waitUntil } from '@vercel/functions'
-import { handleLunaMessage } from '@/lib/luna-agent'
+import { routeMessage } from '@/lib/romy-router'
+import { runRomyCoder } from '@/lib/romy-coder'
+import { getOrCreateSite, updateSiteSandboxId } from '@/lib/romy-sites'
+import { loadHistory, appendTurn } from '@/lib/romy-chat'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
+
+const ACK_MESSAGE =
+  'Moment, ich leg schon mal los 💭 (beim ersten Mal ~1 Min., danach schneller)'
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
@@ -12,23 +18,23 @@ async function logWebhookHit(kind: string, detail: unknown) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
-    const entry = {
-      role: 'user' as const,
-      content: JSON.stringify({ ts: new Date().toISOString(), kind, detail }),
-    }
-    const { data } = await sb
-      .from('luna_conversations')
-      .select('messages')
-      .eq('phone', '__hook__')
-      .single()
-    const existing = (data?.messages || []) as { role: string; content: string }[]
-    const next = [...existing, entry].slice(-50)
-    await sb
-      .from('luna_conversations')
-      .upsert(
-        { phone: '__hook__', messages: next, updated_at: new Date().toISOString() },
-        { onConflict: 'phone' }
-      )
+    await sb.from('romy_conversations').upsert(
+      {
+        phone: '__hook__',
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify({
+              ts: new Date().toISOString(),
+              kind,
+              detail,
+            }),
+          },
+        ],
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'phone' }
+    )
   } catch {
     // swallow — logging must not break the webhook
   }
@@ -42,11 +48,6 @@ export async function GET(req: NextRequest) {
   const challenge = params.get('hub.challenge')
 
   const tokenMatch = token === process.env.WHATSAPP_VERIFY_TOKEN
-  await logWebhookHit('verify', {
-    mode,
-    token_match: tokenMatch,
-    has_token_env: !!process.env.WHATSAPP_VERIFY_TOKEN,
-  })
 
   if (mode === 'subscribe' && tokenMatch) {
     return new NextResponse(challenge, { status: 200 })
@@ -56,33 +57,32 @@ export async function GET(req: NextRequest) {
 
 // ── Meta Cloud API: Incoming messages (POST) ──
 export async function POST(req: NextRequest) {
-  let body: any
+  let body: unknown
   try {
     body = await req.json()
   } catch {
-    await logWebhookHit('post_parse_fail', {})
     return NextResponse.json({ status: 'ok' })
   }
 
-  // Log EVERY incoming POST so we can see what Meta actually sends
-  const change = body?.entry?.[0]?.changes?.[0]
-  const value = change?.value
-  await logWebhookHit('post', {
-    field: change?.field,
-    messaging_product: value?.messaging_product,
-    display_phone_number: value?.metadata?.display_phone_number,
-    phone_number_id: value?.metadata?.phone_number_id,
-    message_type: value?.messages?.[0]?.type,
-    from: value?.messages?.[0]?.from,
-    statuses: value?.statuses?.map((s: { status: string }) => s.status),
-  })
-
-  const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+  const b = body as {
+    entry?: Array<{
+      changes?: Array<{
+        value?: {
+          messages?: Array<{
+            from?: string
+            type?: string
+            text?: { body?: string }
+            image?: { id?: string; caption?: string }
+          }>
+        }
+      }>
+    }>
+  }
+  const message = b?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
   if (!message?.from) {
     return NextResponse.json({ status: 'ok' })
   }
 
-  // waitUntil keeps the container alive after the response so the AI call + send actually completes.
   waitUntil(
     processMessage(message).catch(async (err) => {
       console.error('processMessage error:', err)
@@ -97,16 +97,23 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ status: 'ok' })
 }
 
-async function processMessage(message: any) {
-  const phone = message.from as string
-  const phoneFormatted = '+' + phone
+interface IncomingMessage {
+  from?: string
+  type?: string
+  text?: { body?: string }
+  image?: { id?: string; caption?: string }
+}
+
+async function processMessage(message: IncomingMessage) {
+  const phone = '+' + message.from
+  const metaFrom = message.from!
 
   let text = ''
   let imageUrl: string | undefined
 
   if (message.type === 'text') {
     text = message.text?.body || ''
-  } else if (message.type === 'image') {
+  } else if (message.type === 'image' && message.image?.id) {
     try {
       imageUrl = await getMediaUrl(message.image.id)
     } catch (err) {
@@ -119,19 +126,44 @@ async function processMessage(message: any) {
     text = message.text?.body || ''
   }
 
-  let reply: string
-  try {
-    reply = await handleLunaMessage(phoneFormatted, text, imageUrl)
-  } catch (err) {
-    console.error('Luna agent error:', err)
-    reply = 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!'
+  const history = await loadHistory(phone)
+
+  // Step 1: classify intent (cheap Haiku call)
+  const routed = await routeMessage(history, text || '(leer)', !!imageUrl)
+
+  // Step 2: chat → just send reply, persist, done
+  if (routed.intent === 'chat') {
+    const reply = routed.chat_reply || 'Sag mir einfach, was ich für deine Seite machen soll. 🙂'
+    await sendWhatsAppMessage(metaFrom, reply)
+    await appendTurn(phone, text || '[Bild]', reply).catch(() => {})
+    return
   }
 
-  try {
-    await sendWhatsAppMessage(phone, reply)
-  } catch (err) {
-    console.error('sendWhatsAppMessage failed:', err)
+  // Step 3: build → ack first, then run coder, then send final reply
+  await sendWhatsAppMessage(metaFrom, ACK_MESSAGE).catch((err) => {
+    console.error('ack send failed:', err)
+  })
+
+  const site = await getOrCreateSite(phone, text || 'Neue Website')
+  const coderResult = await runRomyCoder({
+    slug: site.slug,
+    userMessage: text || 'Hallo',
+    imageUrl,
+    history,
+  })
+
+  if (coderResult.sandbox_id) {
+    await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
   }
+
+  const finalReply =
+    coderResult.reply ||
+    (coderResult.ok
+      ? `Fertig! Schau mal: ${coderResult.site_url}`
+      : 'Ups, da ist was schiefgelaufen. Magst du es nochmal versuchen?')
+
+  await sendWhatsAppMessage(metaFrom, finalReply)
+  await appendTurn(phone, text || '[Bild]', finalReply).catch(() => {})
 }
 
 // ── Send a text message via Meta Cloud API ──
@@ -167,14 +199,11 @@ async function sendWhatsAppMessage(to: string, text: string) {
 async function getMediaUrl(mediaId: string): Promise<string> {
   const token = process.env.WHATSAPP_TOKEN
 
-  // Step 1: Get media URL from Meta
   const res = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   const data = await res.json()
 
-  // Step 2: Download the actual media and convert to base64 data URL
-  // (Meta media URLs require auth, so we fetch and convert)
   const mediaRes = await fetch(data.url, {
     headers: { Authorization: `Bearer ${token}` },
   })

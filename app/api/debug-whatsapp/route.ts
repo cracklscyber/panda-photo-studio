@@ -51,7 +51,7 @@ export async function GET() {
     token
   )
 
-  // Check recent webhook deliveries in luna_conversations (phone='__hook__')
+  // Check recent webhook deliveries in romy_conversations (phone='__hook__')
   let recentHooks: unknown = null
   try {
     const sb = createClient(
@@ -59,7 +59,7 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
     const { data } = await sb
-      .from('luna_conversations')
+      .from('romy_conversations')
       .select('messages,updated_at')
       .eq('phone', '__hook__')
       .single()

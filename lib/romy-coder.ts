@@ -212,6 +212,34 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
     mark('locate_claude_bin', { stdout: locate.stdout.slice(-300) })
     const claudeBin = '/tmp/node_modules/.bin/claude'
 
+    let imageAssetPath: string | null = null
+    if (imageUrl && imageUrl.startsWith('data:')) {
+      currentStep = 'image_write'
+      const match = imageUrl.match(/^data:([^;,]+);base64,(.+)$/)
+      if (match) {
+        const mime = match[1]
+        const b64 = match[2]
+        const ext =
+          mime === 'image/png'
+            ? 'png'
+            : mime === 'image/webp'
+              ? 'webp'
+              : mime === 'image/gif'
+                ? 'gif'
+                : 'jpg'
+        const relPath = `assets/upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+        const target = `${WORKSPACE}/${relPath}`
+        await sandbox.commands.run(`mkdir -p ${WORKSPACE}/assets`)
+        await sandbox.commands.run(
+          `echo ${JSON.stringify(b64)} | base64 -d > ${JSON.stringify(target)}`
+        )
+        imageAssetPath = relPath
+        mark('image_written', { path: relPath })
+      } else {
+        mark('image_skip_not_dataurl')
+      }
+    }
+
     const promptParts: string[] = []
     if (history.length > 0) {
       promptParts.push('Bisheriger Gesprächsverlauf (älteste zuerst):')
@@ -221,8 +249,13 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
       promptParts.push('---')
     }
     promptParts.push(`Neue Nachricht vom Kunden: ${userMessage}`)
-    if (imageUrl) {
-      promptParts.push(`Kunde hat ein Bild mitgeschickt. URL/DataURL-Länge: ${imageUrl.length}`)
+    if (imageAssetPath) {
+      promptParts.push(
+        `Kunde hat ein Bild mitgeschickt. Es liegt in deinem cwd unter: ${imageAssetPath}\n` +
+          `Du kannst es via <img src="${imageAssetPath}"> in die Website einbauen (z.B. als Logo, Coverbild, oder in die Galerie — je nach Kontext). Frag im Zweifel kurz nach, wofür es gedacht ist.`
+      )
+    } else if (imageUrl) {
+      promptParts.push(`Kunde hat ein Bild mitgeschickt, aber es konnte nicht übernommen werden.`)
     }
     const fullPrompt = promptParts.join('\n')
 
