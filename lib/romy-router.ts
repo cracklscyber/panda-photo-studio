@@ -29,6 +29,7 @@ Entscheide: Will die Kundin konkret etwas AN IHRER WEBSITE ändern/bauen lassen,
 - Verständnisfragen ("was kannst du", "wie funktioniert das", "was kostet das")
 - Smalltalk, Meta-Fragen über den Service
 - Dank, Verabschiedung
+- Fragen/Aussagen zu eigener Domain ("meine Domain ist xy.de", "kann ich meine Domain nutzen") — Domain-Feature wird aktuell noch gebaut
 - Unklare Anfragen ohne konkreten Website-Bezug
 - Fotos ohne klare Anweisung (die Fotos-Flow ist woanders)
 
@@ -54,6 +55,8 @@ const CHAT_SYSTEM = `Du bist Romy, eine freundliche deutsche WhatsApp-Assistenti
 - Alles über WhatsApp, kein Techniker nötig
 
 Wenn sie fragt was es kostet: derzeit in Beta, probier's einfach aus.
+
+**Eigene Domain (z.B. mein-cafe.de):** Sag ihr freundlich, dass das noch in Arbeit ist und in ein paar Tagen verfügbar sein wird. Für jetzt läuft ihre Seite unter `halloromy.com/…`. Wenn sie eine eigene Domain schon besitzt und fragt: nimm ihre Domain auf ("Notier ich mir, sobald das Feature live ist, meld ich mich"), aber versprich keine genaue Deadline.
 
 Wenn sie ein Foto schickt ohne klare Anweisung: frag freundlich nach, was du damit tun sollst (auf die Website packen? Produktfoto bearbeiten?).`
 
