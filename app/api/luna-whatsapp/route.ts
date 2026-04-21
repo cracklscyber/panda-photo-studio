@@ -9,8 +9,9 @@ import { loadHistory, appendTurn } from '@/lib/romy-chat'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-const ACK_MESSAGE =
-  'Ich leg los 💭 Das erste Mal dauert ein paar Minuten, danach geht's viel schneller.'
+const ACK_FIRST =
+  'Ich leg los 💭 Das erste Mal dauert ein paar Minuten, danach geht\'s viel schneller.'
+const ACK_FOLLOWUP = 'Moment, schau\'s mir an 💭'
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
@@ -140,11 +141,12 @@ async function processMessage(message: IncomingMessage) {
   }
 
   // Step 3: build → ack first, then run coder, then send final reply
-  await sendWhatsAppMessage(metaFrom, ACK_MESSAGE).catch((err) => {
+  const site = await getOrCreateSite(phone, text || 'Neue Website')
+  const ack = site.last_sandbox_id ? ACK_FOLLOWUP : ACK_FIRST
+  await sendWhatsAppMessage(metaFrom, ack).catch((err) => {
     console.error('ack send failed:', err)
   })
 
-  const site = await getOrCreateSite(phone, text || 'Neue Website')
   const coderResult = await runRomyCoder({
     slug: site.slug,
     userMessage: text || 'Hallo',
