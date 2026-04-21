@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const ACK_MESSAGE =
-  'Moment, ich leg schon mal los 💭 (beim ersten Mal ~1 Min., danach schneller)'
+  'Ich leg los 💭 Das erste Mal dauert ein paar Minuten, danach geht's viel schneller.'
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
