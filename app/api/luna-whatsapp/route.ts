@@ -158,11 +158,10 @@ async function processMessage(message: IncomingMessage) {
     await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
   }
 
-  const finalReply =
-    coderResult.reply ||
-    (coderResult.ok
-      ? `Fertig! Schau mal: ${coderResult.site_url}`
-      : 'Ups, da ist was schiefgelaufen. Magst du es nochmal versuchen?')
+  const finalReply = coderResult.ok
+    ? `${(coderResult.reply || 'Fertig!').trim()}\n\n${coderResult.site_url}`
+    : coderResult.reply ||
+      'Ups, da ist was schiefgelaufen. Magst du es nochmal versuchen?'
 
   await sendWhatsAppMessage(metaFrom, finalReply)
   await appendTurn(phone, text || '[Bild]', finalReply).catch(() => {})
