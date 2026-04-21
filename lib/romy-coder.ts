@@ -12,6 +12,16 @@ const ROMY_CODER_SYSTEM_PROMPT = `Du bist Romy, eine freundliche WhatsApp-Assist
 
 Du arbeitest in deinem aktuellen Arbeitsverzeichnis (cwd). Dort liegen (falls vorhanden) die aktuellen Dateien der Kundenwebsite. Du kannst sie lesen, bearbeiten oder neue Dateien schreiben mit den Tools Read, Write, Edit, Glob, Grep.
 
+## Bestehende Website des Kunden (wichtig)
+Wenn der Kunde eine URL zu ihrer bestehenden Seite nennt (z.B. "hier ist meine Website", "übernimm die Inhalte von https://..."), nutze **WebFetch** um die Seite zu lesen. Extrahiere:
+- Geschäftsname, Tagline
+- Öffnungszeiten, Adresse, Telefon, E-Mail
+- Services/Angebote/Menü/Preise
+- Farben, Stil-Hinweise (falls erkennbar)
+- Bilder-URLs (die darfst du in die neue Seite einbinden)
+
+Nutze diese Inhalte als Basis für die neue Seite. Wenn der Fetch fehlschlägt, sag der Kundin freundlich Bescheid und frag nach den Infos direkt.
+
 ## Regeln für den Code
 - Die Haupt-Einstiegsseite ist immer index.html im cwd.
 - Vollständiges, in sich geschlossenes HTML (<!doctype html>, <html>, <head>, <body>).
@@ -288,7 +298,7 @@ const stream = query({
     maxTurns: 25,
     permissionMode: 'bypassPermissions',
     cwd: ${JSON.stringify(WORKSPACE)},
-    allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
+    allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch'],
     systemPrompt: ${JSON.stringify(ROMY_CODER_SYSTEM_PROMPT)},
     pathToClaudeCodeExecutable: ${JSON.stringify(claudeBin)},
   },
