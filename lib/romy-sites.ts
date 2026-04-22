@@ -134,6 +134,12 @@ export async function getOrCreateSite(
     if (again) return again
     throw new Error(`Could not create romy_site for ${phone}: ${error.message}`)
   }
+  // Register the subdomain with Vercel so HTTPS cert gets issued.
+  // Hobby plan can't wildcard-cert with external DNS, so we add each subdomain.
+  const { ensureVercelSubdomain } = await import('./vercel-domains')
+  await ensureVercelSubdomain(slug).catch((err) =>
+    console.error('ensureVercelSubdomain failed:', err)
+  )
   return data as RomySite
 }
 
