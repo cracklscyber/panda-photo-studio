@@ -33,7 +33,19 @@ Nutze diese Inhalte als Basis für die neue Seite. Wenn der Fetch fehlschlägt, 
 - Deutschsprachiger Inhalt falls nicht anders gewünscht.
 
 ## Antwort an den Kunden
-Nachdem du die Dateien bearbeitet hast, gib eine kurze WhatsApp-taugliche Zusammenfassung in 1-3 Sätzen auf Deutsch auf was du gemacht hast. Keine Codeblöcke, keine Markdown-Überschriften. Sparsam Emojis.
+Nachdem du die Dateien bearbeitet hast, gib eine kurze WhatsApp-taugliche Zusammenfassung in 1-3 Sätzen auf Deutsch auf was du gemacht hast. Schreib ganz natürlich, wie in einem normalen WhatsApp-Chat.
+
+**Harte Regeln für die Antwort (absolut verboten):**
+- Keine Codeblöcke (weder \`\`\`…\`\`\` noch \`inline\`).
+- Kein HTML, keine Tags, keine Klassennamen (nichts wie \`<div>\`, \`class="hero"\`).
+- Keine Dateinamen oder Pfade (nicht \`index.html\`, \`styles.css\`, \`/assets/…\`).
+- Keine Sternchen (*): kein *Fett*, kein **Bold**, keine Aufzählungen mit *.
+- Keine Markdown-Überschriften (#).
+- Keine Emojis — auch nicht 😊🎉👍💭✨. Wenn überhaupt ein Akzent, dann typografisches Zeichen (· – →).
+- Keine Farb-Hex-Codes, keine CSS-Eigenschaften.
+- Keine technischen Begriffe wie "deployed", "committed", "Build", "Repository".
+
+Schreib so wie eine Freundin dir in WhatsApp schreiben würde. Fließtext, normaler Satzbau, Punkt-Komma. Wiederhol keine Infos, die der Kunde schon weiß.
 
 Gib deine Antwort an den Kunden als allerletzte Nachricht aus, nachdem alle Datei-Änderungen fertig sind.`
 
@@ -55,6 +67,24 @@ export interface RomyCoderResult {
 
 const WARM_TIMEOUT_MS = 15 * 60_000
 const SERVICE_TAG = 'romy-coder-v1'
+
+export function sanitizeReply(raw: string): string {
+  let out = raw
+  out = out.replace(/```[\s\S]*?```/g, ' ')
+  out = out.replace(/`[^`\n]*`/g, ' ')
+  out = out.replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
+  out = out.replace(/^\s{0,3}#{1,6}\s+/gm, '')
+  out = out.replace(/\*/g, '')
+  out = out.replace(/[ \t]{2,}/g, ' ')
+  out = out.replace(/\n{3,}/g, '\n\n')
+  return out.trim()
+}
+
+function safeReply(raw: string | undefined, fallback: string): string {
+  const cleaned = sanitizeReply((raw ?? '').trim())
+  if (cleaned.length < 3) return fallback
+  return cleaned
+}
 
 const META_BUCKET = 'customer-sites'
 const META_PREFIX = '_meta'
@@ -389,11 +419,12 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       uploaded.push(rel)
     }
 
-    const reply =
-      parsed.assistant?.trim() ||
-      (run.exitCode === 0
-        ? 'Fertig! Schau gerne mal auf deiner Seite nach.'
-        : 'Hmm, da ist etwas schiefgelaufen. Magst du es noch einmal versuchen?')
+    const reply = safeReply(
+      parsed.assistant,
+      run.exitCode === 0
+        ? 'Okay, fertig — schau gerne mal auf deiner Seite nach.'
+        : 'Da ist leider etwas schiefgelaufen. Magst du es nochmal versuchen?'
+    )
 
     const ok = run.exitCode === 0 && !parsed.result?.is_error
     if (ok) {

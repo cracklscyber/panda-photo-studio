@@ -10,8 +10,16 @@ function sb(): SupabaseClient {
 }
 
 export function sitePublicUrl(slug: string, path = 'index.html'): string {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
-  return `${base}/storage/v1/object/public/${BUCKET}/${slug}/${path}`
+  // Per-customer subdomain: https://{slug}.halloromy.com/. The middleware
+  // rewrites subdomain requests internally to /custom-site/{slug}, which
+  // serves the HTML with the correct Content-Type (Supabase public URLs
+  // force text/plain + a CSP sandbox, so we can't link there directly).
+  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+  const suffix = path && path !== 'index.html' ? `/${path}` : ''
+  return `https://${slug}.${apex}${suffix}`
 }
 
 const LIST_PAGE = 100

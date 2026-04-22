@@ -1,32 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const config = {
-  matcher: '/site/:path*',
+  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico).*)'],
 }
 
-export async function middleware(req: NextRequest) {
-  const parts = req.nextUrl.pathname.split('/').filter(Boolean)
-  if (parts.length < 2 || parts[0] !== 'site') return NextResponse.next()
-  const slug = parts[1]
-  const rest = parts.slice(2)
+const APEX = 'halloromy.com'
+const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'app', 'mail', 'ftp'])
 
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/+$/, '')
-  if (!base) return NextResponse.next()
-  const indexUrl = `${base}/storage/v1/object/public/customer-sites/${encodeURIComponent(
-    slug
-  )}/index.html`
+function extractSlug(host: string | null): string | null {
+  if (!host) return null
+  const h = host.split(':')[0].toLowerCase()
+  if (h === APEX || !h.endsWith(`.${APEX}`)) return null
+  const label = h.slice(0, h.length - APEX.length - 1)
+  if (!label || label.includes('.')) return null
+  if (RESERVED_SUBDOMAINS.has(label)) return null
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) return null
+  return label
+}
 
-  try {
-    const head = await fetch(indexUrl, { method: 'HEAD', cache: 'no-store' })
-    if (!head.ok) return NextResponse.next()
-  } catch {
-    return NextResponse.next()
+export function middleware(req: NextRequest) {
+  const host = req.headers.get('host')
+  const hostname = host?.split(':')[0].toLowerCase() || ''
+  const slug = extractSlug(host)
+
+  if (slug) {
+    const url = req.nextUrl.clone()
+    const path = req.nextUrl.pathname
+    url.pathname =
+      path === '/' ? `/custom-site/${slug}` : `/custom-site/${slug}${path}`
+    return NextResponse.rewrite(url)
   }
 
-  const rewritePath =
-    rest.length > 0 ? `/custom-site/${slug}/${rest.join('/')}` : `/custom-site/${slug}`
+  const parts = req.nextUrl.pathname.split('/').filter(Boolean)
 
-  const url = req.nextUrl.clone()
-  url.pathname = rewritePath
-  return NextResponse.rewrite(url)
+  if (hostname === APEX && parts.length >= 2 && parts[0] === 'custom-site') {
+    const legacySlug = parts[1]
+    const rest = parts.slice(2).join('/')
+    const target = new URL(
+      `https://${legacySlug}.${APEX}${rest ? '/' + rest : '/'}`
+    )
+    target.search = req.nextUrl.search
+    return NextResponse.redirect(target, 301)
+  }
+
+  if (parts.length >= 2 && parts[0] === 'site') {
+    const aliasSlug = parts[1]
+    const rest = parts.slice(2)
+    const url = req.nextUrl.clone()
+    url.pathname =
+      rest.length > 0
+        ? `/custom-site/${aliasSlug}/${rest.join('/')}`
+        : `/custom-site/${aliasSlug}`
+    return NextResponse.rewrite(url)
+  }
+
+  return NextResponse.next()
 }

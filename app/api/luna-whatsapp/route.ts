@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { waitUntil } from '@vercel/functions'
 import { routeMessage } from '@/lib/romy-router'
-import { runRomyCoder } from '@/lib/romy-coder'
+import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
 import { getOrCreateSite, updateSiteSandboxId } from '@/lib/romy-sites'
 import { loadHistory, appendTurn } from '@/lib/romy-chat'
 
@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const ACK_FIRST =
-  'Ich leg los 💭 Das erste Mal dauert ein paar Minuten, danach geht\'s viel schneller.'
-const ACK_FOLLOWUP = 'Moment, schau\'s mir an 💭'
+  'Okay, ich arbeite dran. Beim ersten Mal dauert es etwa 2 bis 3 Minuten.'
+const ACK_FOLLOWUP = 'Okay, ich schau\'s mir an — einen kurzen Moment, ca. 30 Sekunden.'
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
@@ -134,7 +134,8 @@ async function processMessage(message: IncomingMessage) {
 
   // Step 2: chat → just send reply, persist, done
   if (routed.intent === 'chat') {
-    const reply = routed.chat_reply || 'Sag mir einfach, was ich für deine Seite machen soll. 🙂'
+    const raw = routed.chat_reply || 'Sag mir einfach, was ich für deine Seite machen soll.'
+    const reply = sanitizeReply(raw) || 'Sag mir einfach, was ich für deine Seite machen soll.'
     await sendWhatsAppMessage(metaFrom, reply)
     await appendTurn(phone, text || '[Bild]', reply).catch(() => {})
     return
@@ -158,13 +159,33 @@ async function processMessage(message: IncomingMessage) {
     await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
   }
 
-  const finalReply = coderResult.ok
-    ? `${(coderResult.reply || 'Fertig!').trim()}\n\n${coderResult.site_url}`
-    : coderResult.reply ||
-      'Ups, da ist was schiefgelaufen. Magst du es nochmal versuchen?'
+  if (coderResult.ok) {
+    const body = (coderResult.reply || 'Fertig!').trim()
+    const sent = await sendWhatsAppCTA(
+      metaFrom,
+      body,
+      'Website ansehen',
+      coderResult.site_url
+    ).catch((err) => {
+      console.error('cta send failed, falling back to text:', err)
+      return false
+    })
+    if (!sent) {
+      await sendWhatsAppMessage(metaFrom, `${body}\n\n${coderResult.site_url}`)
+    }
+    await appendTurn(
+      phone,
+      text || '[Bild]',
+      `${body}\n${coderResult.site_url}`
+    ).catch(() => {})
+    return
+  }
 
-  await sendWhatsAppMessage(metaFrom, finalReply)
-  await appendTurn(phone, text || '[Bild]', finalReply).catch(() => {})
+  const failureReply =
+    coderResult.reply ||
+    'Ups, da ist was schiefgelaufen. Magst du es nochmal versuchen?'
+  await sendWhatsAppMessage(metaFrom, failureReply)
+  await appendTurn(phone, text || '[Bild]', failureReply).catch(() => {})
 }
 
 // ── Send a text message via Meta Cloud API ──
@@ -194,6 +215,53 @@ async function sendWhatsAppMessage(to: string, text: string) {
     console.error('WhatsApp send error:', err)
     throw new Error(`WhatsApp API error: ${res.status}`)
   }
+}
+
+// ── Send a CTA URL button via Meta Cloud API ──
+// body.text max 1024 chars, display_text max 20 chars.
+async function sendWhatsAppCTA(
+  to: string,
+  body: string,
+  displayText: string,
+  url: string
+): Promise<boolean> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const token = process.env.WHATSAPP_TOKEN
+
+  const trimmedBody = body.length > 1024 ? body.slice(0, 1020) + '…' : body
+  const trimmedDisplay =
+    displayText.length > 20 ? displayText.slice(0, 20) : displayText
+
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          body: { text: trimmedBody },
+          action: {
+            name: 'cta_url',
+            parameters: { display_text: trimmedDisplay, url },
+          },
+        },
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('WhatsApp CTA send error:', err)
+    return false
+  }
+  return true
 }
 
 // ── Download media (images) from Meta ──
