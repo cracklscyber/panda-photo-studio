@@ -87,13 +87,19 @@ async function extractBusinessName(userMessage: string): Promise<string | null> 
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 40,
       system:
-        'Extrahiere den Geschäftsnamen aus einer deutschen Nachricht. Antworte NUR mit dem Namen, nichts sonst. Wenn kein klarer Name erkennbar ist, antworte mit: NONE',
+        'Du extrahierst aus einer deutschen Nachricht eine kurze Bezeichnung fürs Geschäft, die als URL-Subdomain taugt.\n' +
+        'Antworte NUR mit der Bezeichnung, nichts sonst. Keine Anführungszeichen, keine Erklärung.\n' +
+        'Reihenfolge:\n' +
+        '1. Wenn ein konkreter Eigenname da ist ("Cafe Sonne", "Friseur Müller"), nutze den.\n' +
+        '2. Sonst nutze den Branchentyp ("Nagelstudio", "Friseur", "Cafe", "Pizzeria", "Tierarzt"). Nur das Substantiv, keine Füllwörter.\n' +
+        '3. Nur wenn wirklich nichts erkennbar ist (reine Begrüßung o.ä.), antworte mit: NONE',
       messages: [{ role: 'user', content: userMessage }],
     })
     const text = res.content
       .map((b) => (b.type === 'text' ? b.text : ''))
       .join('')
       .trim()
+      .replace(/^["'«»]+|["'«»]+$/g, '')
     if (!text || text.toUpperCase() === 'NONE' || text.length > 60) return null
     return text
   } catch {
@@ -109,7 +115,7 @@ export async function getOrCreateSite(
   if (existing) return existing
 
   const businessName = await extractBusinessName(userMessage)
-  const slugBase = businessName || phone.replace(/[^0-9]/g, '').slice(-8) || 'kunde'
+  const slugBase = businessName || 'kunde'
   const slug = await uniquifySlug(slugBase)
 
   const { data, error } = await sb()
