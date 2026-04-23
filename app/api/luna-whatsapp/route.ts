@@ -5,6 +5,7 @@ import { routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
 import { getOrCreateSite, updateSiteSandboxId } from '@/lib/romy-sites'
 import { loadHistory, appendTurn } from '@/lib/romy-chat'
+import { logBuild } from '@/lib/romy-costs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -158,6 +159,16 @@ async function processMessage(message: IncomingMessage) {
   if (coderResult.sandbox_id) {
     await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
   }
+
+  await logBuild({
+    phone,
+    slug: site.slug,
+    ok: coderResult.ok,
+    cost_usd: coderResult.cost_usd,
+    duration_ms: coderResult.duration_ms,
+    was_warm: coderResult.was_warm,
+    user_message: text,
+  }).catch((err) => console.error('logBuild failed:', err))
 
   if (coderResult.ok) {
     const body = (coderResult.reply || 'Fertig!').trim()

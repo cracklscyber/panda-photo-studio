@@ -334,7 +334,7 @@ const stream = query({
   prompt: ${JSON.stringify(fullPrompt)},
   options: {
     model: 'claude-sonnet-4-6',
-    maxTurns: 25,
+    maxTurns: 10,
     permissionMode: 'bypassPermissions',
     cwd: ${JSON.stringify(WORKSPACE)},
     allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch'],
