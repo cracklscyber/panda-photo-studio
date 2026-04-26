@@ -11,8 +11,9 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const ACK_FIRST =
-  'Okay, ich arbeite dran. Beim ersten Mal dauert es etwa 2 bis 3 Minuten.'
-const ACK_FOLLOWUP = 'Okay, ich schau\'s mir an — einen kurzen Moment, ca. 30 Sekunden.'
+  'Alles klar, ich leg jetzt los. Beim ersten Mal dauert es etwa 2 bis 3 Minuten. Um die Feinheiten kümmern wir uns danach.'
+const ACK_FOLLOWUP =
+  'Alles klar, ich schau\'s mir an — einen Moment, ca. 30 Sekunden.'
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
@@ -194,7 +195,7 @@ async function processMessage(message: IncomingMessage) {
 
   const failureReply =
     coderResult.reply ||
-    'Ups, da ist was schiefgelaufen. Magst du es nochmal versuchen?'
+    'Tut mir wirklich sehr leid, da ist gerade was schiefgelaufen. Ich hab das meinem Team gemeldet — sie kümmern sich darum und beheben es manuell. Du musst nichts weiter machen, ich melde mich, sobald es wieder läuft.'
   await sendWhatsAppMessage(metaFrom, failureReply)
   await appendTurn(phone, text || '[Bild]', failureReply).catch(() => {})
 }
