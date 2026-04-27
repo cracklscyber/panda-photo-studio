@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 
 const WHATSAPP_NUMBER = '+491636623276'
@@ -21,7 +22,19 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="mx-auto max-w-3xl px-6 pt-20 pb-16 text-center">
+      <section className="mx-auto max-w-3xl px-6 pt-16 pb-16 text-center">
+        <div className="mb-6 flex justify-center">
+          <div className="relative h-20 w-20 overflow-hidden rounded-full bg-white ring-1 ring-neutral-200/80 shadow-sm">
+            <Image
+              src="/romy-portrait.png"
+              alt="Romy"
+              fill
+              sizes="80px"
+              className="object-cover object-[center_28%] scale-[1.5]"
+              priority
+            />
+          </div>
+        </div>
         <p className="mb-4 text-sm uppercase tracking-[0.2em] text-neutral-500">Website per WhatsApp</p>
         <h1 className="mb-6 text-5xl font-semibold leading-tight tracking-tight md:text-6xl">
           Deine eigene Website.<br />
