@@ -21,8 +21,23 @@ const ACK_FIRST =
   'Alles klar, ich leg jetzt los. Beim ersten Mal dauert es etwa 2 bis 3 Minuten. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
   'Alles klar, ich schau\'s mir an — einen Moment, ca. 30 Sekunden.'
-const LIMIT_MESSAGE =
-  'Schön, dass du dabei bist. Deine Website ist live und du hast schon ein paar Anpassungen gemacht — sieht gut aus. Brauchst du weitere Hilfe, hast Fragen oder möchtest dich beraten lassen? Wir rufen dich gerne an. Möchtest du einen Termin vereinbaren?'
+
+const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
+const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
+
+function buildLimitMessage(phone: string): string {
+  const stripeWithRef = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(phone)}`
+  return [
+    'Schön, dass du dabei bist. Du hast deine freien Anpassungen aufgebraucht — deine Seite bleibt live.',
+    '',
+    'Wie willst du weitermachen?',
+    '',
+    `1) Kostenloses Gespräch mit unserem Team — Termin buchen: ${CAL_BOOKING_URL}`,
+    `2) Direkt aktivieren (29€/Monat, jederzeit kündbar): ${stripeWithRef}`,
+    '',
+    'Sag einfach Bescheid was passt.',
+  ].join('\n')
+}
 
 function verifyMetaSignature(
   rawBody: string,
@@ -191,7 +206,8 @@ async function processMessage(message: IncomingMessage) {
 
   // Quota gate: free tier covers FREE_BUILD_LIMIT build events.
   if ((site.builds_used ?? 0) >= FREE_BUILD_LIMIT && !site.paid) {
-    await sendWhatsAppMessage(metaFrom, LIMIT_MESSAGE).catch((err) =>
+    const limitMessage = buildLimitMessage(phone)
+    await sendWhatsAppMessage(metaFrom, limitMessage).catch((err) =>
       console.error('limit message send failed:', err)
     )
     if (!site.callback_requested_at) {
@@ -199,7 +215,7 @@ async function processMessage(message: IncomingMessage) {
         console.error('markCallbackRequested failed:', err)
       )
     }
-    await appendTurn(phone, text || '[Bild]', LIMIT_MESSAGE).catch(() => {})
+    await appendTurn(phone, text || '[Bild]', limitMessage).catch(() => {})
     return
   }
 
