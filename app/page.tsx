@@ -5,8 +5,7 @@ import { BookingModal } from '@/components/booking-modal'
 const WHATSAPP_NUMBER = '+491636623276'
 const WHATSAPP_NUMBER_DISPLAY = '+49 163 66 23 276'
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Romy')}`
-// Cal.com booking URL — replace with your event link, e.g. 'https://cal.com/romy-ai/beratung?embed=true'
-const CAL_BOOKING_URL = ''
+const CAL_BOOKING_URL = 'https://cal.com/zoe-sophie-christ-ts6hj6'
 
 export default function Home() {
   return (
