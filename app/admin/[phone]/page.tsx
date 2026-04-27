@@ -1,7 +1,11 @@
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { isAdminAuthed } from '@/lib/admin-auth'
+import { setPaid, resetQuota } from '@/lib/romy-sites'
+
+const FREE_LIMIT = 4
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +20,9 @@ interface SiteRow {
   business_name: string | null
   last_sandbox_id: string | null
   custom_domain: string | null
+  builds_used: number | null
+  paid: boolean | null
+  callback_requested_at: string | null
   created_at: string
   updated_at: string
 }
@@ -35,6 +42,25 @@ function formatRelative(iso: string): string {
   if (ms < 3_600_000) return `vor ${Math.floor(ms / 60_000)} Min`
   if (ms < 86_400_000) return `vor ${Math.floor(ms / 3_600_000)} Std`
   return `vor ${Math.floor(ms / 86_400_000)} Tagen`
+}
+
+async function togglePaid(formData: FormData) {
+  'use server'
+  const phone = String(formData.get('phone') || '')
+  const next = formData.get('next') === '1'
+  if (!(await isAdminAuthed()) || !phone) return
+  await setPaid(phone, next)
+  revalidatePath(`/admin/${encodeURIComponent(phone)}`)
+  revalidatePath('/admin')
+}
+
+async function resetQuotaAction(formData: FormData) {
+  'use server'
+  const phone = String(formData.get('phone') || '')
+  if (!(await isAdminAuthed()) || !phone) return
+  await resetQuota(phone)
+  revalidatePath(`/admin/${encodeURIComponent(phone)}`)
+  revalidatePath('/admin')
 }
 
 export default async function ConvoPage({
@@ -140,6 +166,73 @@ export default async function ConvoPage({
         </section>
 
         <aside className="space-y-4">
+          <div className="rounded-xl border border-neutral-200 bg-white p-4">
+            <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-500">
+              Quota & Bezahlung
+            </h3>
+            <div className="mb-3 space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-neutral-500">Builds genutzt</span>
+                <span className="font-medium">
+                  {site?.builds_used ?? 0}/{FREE_LIMIT}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-neutral-500">Status</span>
+                {site?.paid ? (
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Paid
+                  </span>
+                ) : site?.callback_requested_at ? (
+                  <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+                    Anruf offen
+                  </span>
+                ) : (
+                  <span className="text-xs text-neutral-500">Free Tier</span>
+                )}
+              </div>
+              {site?.callback_requested_at && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-neutral-500">
+                    Anruf angefragt
+                  </span>
+                  <span className="text-xs">
+                    {formatRelative(site.callback_requested_at)}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <form action={togglePaid}>
+                <input type="hidden" name="phone" value={phone} />
+                <input
+                  type="hidden"
+                  name="next"
+                  value={site?.paid ? '0' : '1'}
+                />
+                <button
+                  type="submit"
+                  className={`w-full rounded-lg px-3 py-1.5 text-xs font-medium ${
+                    site?.paid
+                      ? 'border border-neutral-200 hover:bg-neutral-50'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  {site?.paid ? 'Paid zurücksetzen' : 'Als bezahlt markieren'}
+                </button>
+              </form>
+              <form action={resetQuotaAction}>
+                <input type="hidden" name="phone" value={phone} />
+                <button
+                  type="submit"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+                >
+                  Quota zurücksetzen
+                </button>
+              </form>
+            </div>
+          </div>
+
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-500">
               Site

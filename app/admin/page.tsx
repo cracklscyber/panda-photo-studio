@@ -25,7 +25,12 @@ interface SiteRow {
   phone: string
   slug: string
   business_name: string | null
+  builds_used: number | null
+  paid: boolean | null
+  callback_requested_at: string | null
 }
+
+const FREE_LIMIT = 4
 
 interface BuildLogRow {
   phone: string
@@ -110,7 +115,11 @@ export default async function AdminPage({
       .select('phone, messages, updated_at')
       .order('updated_at', { ascending: false })
       .limit(200),
-    sb.from('romy_sites').select('phone, slug, business_name'),
+    sb
+      .from('romy_sites')
+      .select(
+        'phone, slug, business_name, builds_used, paid, callback_requested_at'
+      ),
     sb.from('romy_build_logs').select('phone, cost_usd, ok'),
   ])
 
@@ -146,6 +155,16 @@ export default async function AdminPage({
     })
 
   const liveCount = rows.filter((r) => r.live).length
+  const callbackPendingCount = rows.filter(
+    (r) => r.site?.callback_requested_at && !r.site?.paid
+  ).length
+
+  rows.sort((a, b) => {
+    const aPending = a.site?.callback_requested_at && !a.site?.paid ? 1 : 0
+    const bPending = b.site?.callback_requested_at && !b.site?.paid ? 1 : 0
+    if (aPending !== bPending) return bPending - aPending
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  })
 
   return (
     <main className="min-h-screen bg-neutral-50">
@@ -158,6 +177,15 @@ export default async function AdminPage({
               <span className="font-medium text-emerald-600">
                 {liveCount} aktiv jetzt
               </span>
+              {callbackPendingCount > 0 && (
+                <>
+                  {' '}
+                  •{' '}
+                  <span className="font-medium text-orange-600">
+                    {callbackPendingCount} Anruf offen
+                  </span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -194,6 +222,7 @@ export default async function AdminPage({
                   <th className="px-4 py-3 font-medium">Geschäft</th>
                   <th className="px-4 py-3 font-medium">Letzte Nachricht</th>
                   <th className="px-4 py-3 font-medium">Aktiv</th>
+                  <th className="px-4 py-3 font-medium">Quota</th>
                   <th className="px-4 py-3 font-medium text-right">Msgs</th>
                   <th className="px-4 py-3 font-medium text-right">Builds</th>
                   <th className="px-4 py-3 font-medium text-right">Cost</th>
@@ -263,6 +292,26 @@ export default async function AdminPage({
                     <td className="px-4 py-3 text-xs text-neutral-500">
                       <Link href={`/admin/${encodeURIComponent(r.phone)}`}>
                         {formatRelative(r.updated_at)}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      <Link
+                        href={`/admin/${encodeURIComponent(r.phone)}`}
+                        className="block"
+                      >
+                        {r.site?.paid ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                            Paid
+                          </span>
+                        ) : r.site?.callback_requested_at ? (
+                          <span className="rounded-full bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
+                            Anruf offen
+                          </span>
+                        ) : (
+                          <span className="text-neutral-500">
+                            {r.site?.builds_used ?? 0}/{FREE_LIMIT}
+                          </span>
+                        )}
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-neutral-600">

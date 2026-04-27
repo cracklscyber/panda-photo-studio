@@ -26,9 +26,14 @@ export interface RomySite {
   business_name: string | null
   last_sandbox_id: string | null
   custom_domain: string | null
+  builds_used: number
+  paid: boolean
+  callback_requested_at: string | null
   created_at: string
   updated_at: string
 }
+
+export const FREE_BUILD_LIMIT = 4
 
 export function slugify(input: string): string {
   return input
@@ -150,5 +155,46 @@ export async function updateSiteSandboxId(
   await sb()
     .from('romy_sites')
     .update({ last_sandbox_id: sandboxId, updated_at: new Date().toISOString() })
+    .eq('phone', phone)
+}
+
+export async function incrementBuildCount(phone: string): Promise<void> {
+  const { data } = await sb()
+    .from('romy_sites')
+    .select('builds_used')
+    .eq('phone', phone)
+    .maybeSingle()
+  const current = (data?.builds_used as number | undefined) ?? 0
+  await sb()
+    .from('romy_sites')
+    .update({ builds_used: current + 1, updated_at: new Date().toISOString() })
+    .eq('phone', phone)
+}
+
+export async function markCallbackRequested(phone: string): Promise<void> {
+  await sb()
+    .from('romy_sites')
+    .update({
+      callback_requested_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('phone', phone)
+}
+
+export async function setPaid(phone: string, paid: boolean): Promise<void> {
+  await sb()
+    .from('romy_sites')
+    .update({ paid, updated_at: new Date().toISOString() })
+    .eq('phone', phone)
+}
+
+export async function resetQuota(phone: string): Promise<void> {
+  await sb()
+    .from('romy_sites')
+    .update({
+      builds_used: 0,
+      callback_requested_at: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq('phone', phone)
 }

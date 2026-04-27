@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { waitUntil } from '@vercel/functions'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
-import { getOrCreateSite, updateSiteSandboxId } from '@/lib/romy-sites'
+import {
+  getOrCreateSite,
+  updateSiteSandboxId,
+  incrementBuildCount,
+  markCallbackRequested,
+  FREE_BUILD_LIMIT,
+} from '@/lib/romy-sites'
 import { loadHistory, appendTurn } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 
@@ -14,6 +21,35 @@ const ACK_FIRST =
   'Alles klar, ich leg jetzt los. Beim ersten Mal dauert es etwa 2 bis 3 Minuten. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
   'Alles klar, ich schau\'s mir an — einen Moment, ca. 30 Sekunden.'
+const LIMIT_MESSAGE =
+  'Schön, dass du dabei bist. Deine Website ist live und du hast schon ein paar Anpassungen gemacht — sieht gut aus. Brauchst du weitere Hilfe, hast Fragen oder möchtest dich beraten lassen? Wir rufen dich gerne an. Möchtest du einen Termin vereinbaren?'
+
+function verifyMetaSignature(
+  rawBody: string,
+  signatureHeader: string | null
+): boolean {
+  const secret = process.env.WHATSAPP_APP_SECRET
+  if (!secret) {
+    console.warn(
+      'WHATSAPP_APP_SECRET not set — skipping signature verification (not safe for prod)'
+    )
+    return true
+  }
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false
+  const provided = signatureHeader.slice(7)
+  const expected = createHmac('sha256', secret)
+    .update(rawBody, 'utf8')
+    .digest('hex')
+  if (provided.length !== expected.length) return false
+  try {
+    return timingSafeEqual(
+      Buffer.from(provided, 'hex'),
+      Buffer.from(expected, 'hex')
+    )
+  } catch {
+    return false
+  }
+}
 
 async function logWebhookHit(kind: string, detail: unknown) {
   try {
@@ -60,9 +96,16 @@ export async function GET(req: NextRequest) {
 
 // ── Meta Cloud API: Incoming messages (POST) ──
 export async function POST(req: NextRequest) {
+  const rawBody = await req.text()
+  const signature = req.headers.get('x-hub-signature-256')
+  if (!verifyMetaSignature(rawBody, signature)) {
+    console.error('Meta signature verification failed')
+    return new NextResponse('Forbidden', { status: 403 })
+  }
+
   let body: unknown
   try {
-    body = await req.json()
+    body = JSON.parse(rawBody)
   } catch {
     return NextResponse.json({ status: 'ok' })
   }
@@ -145,6 +188,21 @@ async function processMessage(message: IncomingMessage) {
 
   // Step 3: build → ack first, then run coder, then send final reply
   const site = await getOrCreateSite(phone, text || 'Neue Website')
+
+  // Quota gate: free tier covers FREE_BUILD_LIMIT build events.
+  if ((site.builds_used ?? 0) >= FREE_BUILD_LIMIT && !site.paid) {
+    await sendWhatsAppMessage(metaFrom, LIMIT_MESSAGE).catch((err) =>
+      console.error('limit message send failed:', err)
+    )
+    if (!site.callback_requested_at) {
+      await markCallbackRequested(phone).catch((err) =>
+        console.error('markCallbackRequested failed:', err)
+      )
+    }
+    await appendTurn(phone, text || '[Bild]', LIMIT_MESSAGE).catch(() => {})
+    return
+  }
+
   const ack = site.last_sandbox_id ? ACK_FOLLOWUP : ACK_FIRST
   await sendWhatsAppMessage(metaFrom, ack).catch((err) => {
     console.error('ack send failed:', err)
@@ -172,6 +230,9 @@ async function processMessage(message: IncomingMessage) {
   }).catch((err) => console.error('logBuild failed:', err))
 
   if (coderResult.ok) {
+    await incrementBuildCount(phone).catch((err) =>
+      console.error('incrementBuildCount failed:', err)
+    )
     const body = (coderResult.reply || 'Fertig!').trim()
     const sent = await sendWhatsAppCTA(
       metaFrom,
