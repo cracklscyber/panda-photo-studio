@@ -273,23 +273,22 @@ export default async function AdminPage({
                         )}
                       </Link>
                     </td>
-                    <td className="max-w-xs px-4 py-3">
+                    <td className="px-4 py-3">
                       <Link
                         href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="block"
+                        className="flex max-w-[280px] items-baseline gap-1"
                       >
                         <span
-                          className={`mr-1 text-xs font-medium ${r.last?.role === 'user' ? 'text-blue-600' : 'text-neutral-500'}`}
+                          className={`shrink-0 text-xs font-medium ${r.last?.role === 'user' ? 'text-blue-600' : 'text-neutral-500'}`}
                         >
                           {r.last?.role === 'user' ? 'User:' : 'Romy:'}
                         </span>
                         <span className="truncate text-neutral-700">
-                          {r.last?.content?.slice(0, 80) || '—'}
-                          {(r.last?.content?.length || 0) > 80 ? '…' : ''}
+                          {r.last?.content || '—'}
                         </span>
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-xs text-neutral-500">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-500">
                       <Link href={`/admin/${encodeURIComponent(r.phone)}`}>
                         {formatRelative(r.updated_at)}
                       </Link>
