@@ -1,9 +1,12 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { BookingModal } from '@/components/booking-modal'
 
 const WHATSAPP_NUMBER = '+491636623276'
 const WHATSAPP_NUMBER_DISPLAY = '+49 163 66 23 276'
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Romy')}`
+// Cal.com booking URL — replace with your event link, e.g. 'https://cal.com/romy-ai/beratung?embed=true'
+const CAL_BOOKING_URL = ''
 
 export default function Home() {
   return (
@@ -57,6 +60,15 @@ export default function Home() {
         </a>
         <p className="mt-4 text-sm text-neutral-500">
           oder direkt schreiben an <span className="font-medium text-neutral-700">{WHATSAPP_NUMBER_DISPLAY}</span>
+        </p>
+        <p className="mt-6 text-sm text-neutral-500">
+          Lieber erst persönlich sprechen?{' '}
+          <BookingModal
+            url={CAL_BOOKING_URL}
+            className="font-medium text-neutral-900 underline decoration-neutral-300 underline-offset-4 transition hover:decoration-neutral-900"
+          >
+            Kostenlose Beratung buchen
+          </BookingModal>
         </p>
       </section>
 
