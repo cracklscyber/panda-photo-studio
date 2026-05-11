@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const ACK_FIRST =
-  'Alles klar, ich leg jetzt los. Beim ersten Mal dauert es etwa 2 bis 3 Minuten. Um die Feinheiten kümmern wir uns danach.'
+  'Alles klar, ich leg jetzt los. Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
   'Alles klar, ich schau\'s mir an — einen Moment, ca. 30 Sekunden.'
 
@@ -28,14 +28,12 @@ const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
 function buildLimitMessage(phone: string): string {
   const stripeWithRef = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(phone)}`
   return [
-    'Schön, dass du dabei bist. Du hast deine freien Anpassungen aufgebraucht — deine Seite bleibt live.',
+    'Du hast deine kostenlosen Änderungen aufgebraucht. Deine Seite bleibt natürlich erhalten.',
     '',
-    'Wie willst du weitermachen?',
+    'Wenn ich weiter für dich bauen und Änderungen live setzen soll, aktiviere Romy für 29€/Monat. Das ist jederzeit kündbar.',
     '',
-    `1) Kostenloses Gespräch mit unserem Team — Termin buchen: ${CAL_BOOKING_URL}`,
-    `2) Direkt aktivieren (29€/Monat, jederzeit kündbar): ${stripeWithRef}`,
-    '',
-    'Sag einfach Bescheid was passt.',
+    `Direkt aktivieren: ${stripeWithRef}`,
+    `Oder kurz kostenlos sprechen: ${CAL_BOOKING_URL}`,
   ].join('\n')
 }
 

@@ -1,0 +1,458 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { routeMessage } from '@/lib/romy-router'
+import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
+import { ensureVercelSubdomain } from '@/lib/vercel-domains'
+import {
+  getOrCreateSite,
+  updateSiteSandboxId,
+  incrementBuildCount,
+  markCallbackRequested,
+  resetSite,
+  publishSite,
+  FREE_BUILD_LIMIT,
+} from '@/lib/romy-sites'
+import { sitePublicUrl } from '@/lib/supabase-storage'
+import { loadHistory, appendTurn, resetHistory } from '@/lib/romy-chat'
+import { logBuild } from '@/lib/romy-costs'
+import {
+  ensureCustomer,
+  findCustomer,
+  markFirstBuild,
+  isAuthenticated,
+  hasCompletedFirstBuild,
+  resetCustomer,
+} from '@/lib/romy-customers'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
+const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
+const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
+
+const ACK_FIRST_LINK =
+  'Alles klar, ich analysiere jetzt deinen Link und baue daraus einen ersten Entwurf. Das dauert kurz. Feinheiten machen wir danach.'
+const ACK_FIRST_DIRECT =
+  'Alles klar, ich baue dir jetzt einen ersten Entwurf. Beim ersten Mal kann es ein paar Minuten dauern. Feinheiten machen wir danach.'
+const ACK_FOLLOWUP =
+  "Alles klar, ich schau's mir an. Einen Moment, ca. 30 Sekunden."
+
+const AUTH_REQUIRED_REPLY =
+  'Damit du deine Seite behältst und ich sie weiter für dich pflegen kann, lege bitte kurz dein Kundenkonto an. Das geht in Sekunden mit Google oder E-Mail. Danach speichere ich deinen Chatverlauf, deine Entwürfe und deine Website, und wir machen genau hier weiter.'
+
+const POST_FIRST_BUILD_AUTH_REPLY =
+  'Wenn du mit diesem Entwurf weitermachen willst, lege bitte jetzt dein kostenloses Kundenkonto an. Dann bleiben dein Chatverlauf, deine Entwürfe und deine Website gespeichert.'
+
+const ONBOARDING_JA_REPLY =
+  'Super. Bitte schick mir einen Link zu deiner Website, deinem Social-Media-Profil oder deinem Google-Eintrag.'
+const ONBOARDING_NEIN_REPLY =
+  'Alles klar, dann fangen wir gemeinsam von vorne an. Erzähl mir bitte kurz etwas über dich: Was für ein Unternehmen hast du und wie heißt es? Welche Inhalte soll deine Website enthalten (z.B. Angebot, Leistungen, Öffnungszeiten, Kontakt)? Und in welchem Stil hättest du sie gerne (modern, klassisch, verspielt oder minimal)?'
+const STYLE_AFTER_LINK_REPLY =
+  'Danke. Verrat mir bitte noch kurz die Stilrichtung: eher minimalistisch, modern, editorial, warm/klassisch oder den Stil der aktuellen Seite beibehalten?'
+const LAYOUT_CHOICE_REPLY =
+  [
+    'Danke. Bevor ich baue, wähle bitte kurz eine Layout-Richtung:',
+    '',
+    '1. Ruhig & vertrauensvoll, großes Hundebild, viel Weißraum, warm und seriös.',
+    '2. Editorial & hochwertig, stärker wie ein kleines Magazin, mit großen Typo-Flächen.',
+    '3. Freundlich & nahbar, etwas persönlicher, mit klaren Angebotskarten.',
+    '',
+    'Schreib einfach 1, 2 oder 3.',
+  ].join('\n')
+
+const PUBLISH_MISSING_DRAFT_REPLY =
+  'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
+
+function detectOnboardingAnswer(text: string): 'ja' | 'nein' | null {
+  const normalized = text.trim().toLowerCase().replace(/[!.?,]+$/g, '')
+  if (normalized === 'ja' || normalized === 'yes' || normalized === 'jep' || normalized === 'jo') return 'ja'
+  if (normalized === 'nein' || normalized === 'no' || normalized === 'nope' || normalized === 'nö') return 'nein'
+  return null
+}
+
+function buildLimitMessage(sessionKey: string): string {
+  const stripeWithRef = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(sessionKey)}`
+  return [
+    'Du hast deine kostenlosen Änderungen aufgebraucht. Deine Seite bleibt natürlich erhalten.',
+    '',
+    'Wenn ich weiter für dich bauen und Änderungen live setzen soll, aktiviere Romy für 29€/Monat. Das ist jederzeit kündbar.',
+    '',
+    `Direkt aktivieren: ${stripeWithRef}`,
+    `Oder kurz kostenlos sprechen: ${CAL_BOOKING_URL}`,
+  ].join('\n')
+}
+
+function cleanSessionId(input: unknown): string {
+  if (typeof input !== 'string') return ''
+  return input.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)
+}
+
+function fallbackReply(text: string): string {
+  const lower = text.toLowerCase()
+  const hasUrl = /https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(text)
+  if (hasUrl) {
+    return 'Danke, schick mir gern kurz dazu: Soll die neue Seite ganz anders wirken, oder soll ich den Stil deiner aktuellen Website behalten und nur moderner machen?'
+  }
+  if (/(preis|kost|beta|abo|monat)/.test(lower)) {
+    return 'Romy ist gerade noch in der Beta. Du kannst kostenlos starten und mir erstmal erzählen, was deine Website können soll.'
+  }
+  if (/(hallo|hi|hey|guten)/.test(lower)) {
+    return 'Hi, ich bin Romy. Hast du schon eine Website? Wenn ja, schick mir kurz den Link. Wenn nicht, erzähl mir einfach, was du machst und wie deine neue Website wirken soll.'
+  }
+  return 'Alles klar. Erzähl mir kurz: Was bietest du an, wie heißt dein Geschäft und wie soll deine Website wirken (eher modern, ruhig, hochwertig oder etwas ganz anderes)?'
+}
+
+function heuristicBuildIntent(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const lower = text.toLowerCase()
+  if (hasLink(text) && previousAssistantAskedForOneLink(history)) return false
+  if (previousAssistantAskedForStyleDirection(history)) return false
+  if (previousAssistantAskedForLayoutChoice(history)) return true
+  return /\b(bau|baue|bauen|erstell|erstelle|machen|mach|änder|ändere|aendere|update|aktualisier|aktualisiere|füg|fueg|hinzu|lösch|loesch|entfern|design|farbe|schrift|öffnungszeit|oeffnungszeit|adresse|kontakt|preis|leistung|seite|website|webseite|homepage)\b/i.test(lower)
+}
+
+function hasLink(text: string): boolean {
+  return /https?:\/\/|www\.|(?:airbnb|instagram|facebook|google|maps)\.[a-z]{2,}|[a-z0-9-]+\.[a-z]{2,}/i.test(text)
+}
+
+function wantsPublish(text: string): boolean {
+  return /\b(veroeffentlichen|veröffentlichen|live schalten|online stellen|freigeben|seite live|go live)\b/i.test(text)
+}
+
+function previousAssistantAskedForStyleDirection(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
+  if (!lastAssistant) return false
+  const text = lastAssistant.content.toLowerCase()
+  return text.includes('verrat mir bitte noch kurz die stilrichtung')
+}
+
+function previousAssistantAskedForLayoutChoice(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
+  if (!lastAssistant) return false
+  const text = lastAssistant.content.toLowerCase()
+  return text.includes('wähle bitte kurz eine layout-richtung') || text.includes('schreib einfach 1, 2 oder 3')
+}
+
+function previousAssistantAskedForOneLink(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
+  if (!lastAssistant) return false
+  const text = lastAssistant.content.toLowerCase()
+  return (
+    text.includes('bitte schick romy einen link') ||
+    text.includes('schick mir bitte den link') ||
+    text.includes('einen link zu deiner website')
+  )
+}
+
+function historyContainsLink(history: Array<{ role: 'user' | 'assistant'; content: string }>): boolean {
+  return history.slice(-8).some((m) => m.role === 'user' && hasLink(m.content))
+}
+
+type StreamEvent =
+  | { type: 'reply'; text: string; intent: 'chat' | 'limit'; degraded?: boolean }
+  | { type: 'ack'; text: string }
+  | { type: 'final'; text: string; siteUrl?: string; intent: 'build' }
+  | { type: 'error'; text: string; error?: string }
+  | { type: 'auth_required'; text: string }
+  | { type: 'auth_prompt' }
+
+function streamResponse(
+  produce: (emit: (event: StreamEvent) => Promise<void>) => Promise<void>
+): Response {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = async (event: StreamEvent) => {
+        controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
+      }
+      try {
+        await produce(emit)
+      } catch (err) {
+        console.error('chat stream error:', err)
+        await emit({
+          type: 'error',
+          text: 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.',
+          error: (err as Error).message,
+        }).catch(() => {})
+      } finally {
+        controller.close()
+      }
+    },
+  })
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+}
+
+export async function POST(req: NextRequest) {
+  let body: {
+    sessionId?: unknown
+    message?: unknown
+    isOnboarding?: unknown
+    imageDataUrl?: unknown
+  }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const sessionId = cleanSessionId(body.sessionId)
+  const text = typeof body.message === 'string' ? body.message.trim() : ''
+  const isOnboarding = body.isOnboarding === true
+  const imageDataUrl =
+    typeof body.imageDataUrl === 'string' && body.imageDataUrl.startsWith('data:')
+      ? body.imageDataUrl
+      : undefined
+
+  if (!sessionId) {
+    return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 })
+  }
+  if (!text) {
+    return NextResponse.json({ error: 'Missing message' }, { status: 400 })
+  }
+
+  const sessionKey = `web:${sessionId}`
+
+  return streamResponse(async (emit) => {
+    if (isOnboarding) {
+      const answer = detectOnboardingAnswer(text)
+      if (answer === 'ja' || answer === 'nein') {
+        const existingCustomer = await findCustomer(sessionKey).catch(() => null)
+        const canReset =
+          !existingCustomer ||
+          (!hasCompletedFirstBuild(existingCustomer) &&
+            !isAuthenticated(existingCustomer) &&
+            !existingCustomer.stripe_customer_id)
+        if (canReset) {
+          await resetSite(sessionKey).catch((err) =>
+            console.error('resetSite failed:', err)
+          )
+          await resetCustomer(sessionKey).catch((err) =>
+            console.error('resetCustomer failed:', err)
+          )
+        }
+        const reply = answer === 'ja' ? ONBOARDING_JA_REPLY : ONBOARDING_NEIN_REPLY
+        await resetHistory(sessionKey, text, reply).catch(() => {})
+        await emit({ type: 'reply', text: reply, intent: 'chat' })
+        return
+      }
+    }
+
+    const customer = await ensureCustomer(sessionKey).catch((err) => {
+      console.error('ensureCustomer failed:', err)
+      return null
+    })
+
+    if (
+      customer &&
+      hasCompletedFirstBuild(customer) &&
+      !isAuthenticated(customer)
+    ) {
+      await appendTurn(sessionKey, text, AUTH_REQUIRED_REPLY).catch(() => {})
+      await emit({ type: 'auth_required', text: AUTH_REQUIRED_REPLY })
+      return
+    }
+
+    const history = await loadHistory(sessionKey)
+    if (wantsPublish(text)) {
+      const site = await publishSite(sessionKey).catch((err) => {
+        console.error('publishSite failed:', err)
+        return null
+      })
+      const reply = site
+        ? `Alles klar, ich habe deinen Entwurf veröffentlicht.\n\n${sitePublicUrl(site.slug)}`
+        : PUBLISH_MISSING_DRAFT_REPLY
+      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await emit({
+        type: 'final',
+        text: reply,
+        siteUrl: site ? sitePublicUrl(site.slug) : undefined,
+        intent: 'build',
+      })
+      return
+    }
+
+    if (hasLink(text) && previousAssistantAskedForOneLink(history)) {
+      await appendTurn(sessionKey, text, STYLE_AFTER_LINK_REPLY).catch(() => {})
+      await emit({ type: 'reply', text: STYLE_AFTER_LINK_REPLY, intent: 'chat' })
+      return
+    }
+
+    if (previousAssistantAskedForStyleDirection(history)) {
+      await appendTurn(sessionKey, text, LAYOUT_CHOICE_REPLY).catch(() => {})
+      await emit({ type: 'reply', text: LAYOUT_CHOICE_REPLY, intent: 'chat' })
+      return
+    }
+
+    let routed: Awaited<ReturnType<typeof routeMessage>>
+    try {
+      routed = await routeMessage(history, text, !!imageDataUrl)
+    } catch (err) {
+      console.error('routeMessage failed:', err)
+      if (heuristicBuildIntent(text, history)) {
+        routed = { intent: 'build', classify_ms: 0 }
+      } else {
+      const reply = fallbackReply(text)
+      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await emit({ type: 'reply', text: reply, intent: 'chat', degraded: true })
+      return
+      }
+    }
+
+    if (routed.intent === 'chat') {
+      const reply =
+        sanitizeReply(routed.chat_reply || '') ||
+        'Sag mir einfach, was ich für deine Seite machen soll.'
+      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await emit({ type: 'reply', text: reply, intent: 'chat' })
+      return
+    }
+
+    const buildContext = [
+      ...history.slice(-8).map((m) => m.content),
+      text,
+    ].join('\n')
+    const site = await getOrCreateSite(sessionKey, buildContext)
+
+    if ((site.builds_used ?? 0) >= FREE_BUILD_LIMIT && !site.paid) {
+      const reply = buildLimitMessage(sessionKey)
+      if (!site.callback_requested_at) {
+        await markCallbackRequested(sessionKey).catch((err) =>
+          console.error('markCallbackRequested failed:', err)
+        )
+      }
+      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await emit({ type: 'reply', text: reply, intent: 'limit' })
+      return
+    }
+
+    const isFirstBuild = !site.last_sandbox_id
+    const ack = isFirstBuild
+      ? (hasLink(text) || historyContainsLink(history) ? ACK_FIRST_LINK : ACK_FIRST_DIRECT)
+      : ACK_FOLLOWUP
+    await emit({ type: 'ack', text: ack })
+
+    const buildStart = Date.now()
+    const BUILD_TIMEOUT_MS = 285_000
+    let coderResult: Awaited<ReturnType<typeof runRomyCoder>> | null = null
+    let timedOut = false
+
+    try {
+      coderResult = await Promise.race([
+        runRomyCoder({
+          slug: site.slug,
+          userMessage: text,
+          history,
+          isFirstBuild,
+          imageUrl: imageDataUrl,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            timedOut = true
+            reject(new Error(`build_timeout_${BUILD_TIMEOUT_MS}ms`))
+          }, BUILD_TIMEOUT_MS)
+        ),
+      ])
+    } catch (err) {
+      await logBuild({
+        phone: sessionKey,
+        slug: site.slug,
+        ok: false,
+        cost_usd: null,
+        duration_ms: Date.now() - buildStart,
+        was_warm: !isFirstBuild,
+        user_message: text,
+      }).catch((logErr) => console.error('logBuild (timeout) failed:', logErr))
+
+      const reply = timedOut
+        ? 'Entschuldige, der Build hat zu lange gedauert und wurde automatisch gestoppt. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'
+        : 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'
+      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await emit({ type: 'error', text: reply, error: (err as Error).message })
+      return
+    }
+
+    if (coderResult.sandbox_id) {
+      await updateSiteSandboxId(sessionKey, coderResult.sandbox_id).catch(() => {})
+    }
+
+    await logBuild({
+      phone: sessionKey,
+      slug: site.slug,
+      ok: coderResult.ok,
+      cost_usd: coderResult.cost_usd,
+      duration_ms: coderResult.duration_ms,
+      was_warm: coderResult.was_warm,
+      user_message: text,
+    }).catch((err) => console.error('logBuild failed:', err))
+
+    if (coderResult.ok) {
+      await ensureVercelSubdomain(site.slug).catch((err) =>
+        console.error('ensureVercelSubdomain failed:', err)
+      )
+      await incrementBuildCount(sessionKey).catch((err) =>
+        console.error('incrementBuildCount failed:', err)
+      )
+      if (isFirstBuild) {
+        await markFirstBuild(sessionKey).catch((err) =>
+          console.error('markFirstBuild failed:', err)
+        )
+      }
+      const bodyText = sanitizeReply(coderResult.reply || 'Fertig.')
+      const shouldPromptForAccount = isFirstBuild && (!customer || !isAuthenticated(customer))
+      const publishHint = isFirstBuild
+        ? 'Das ist erstmal nur dein Entwurf. Wenn du zufrieden bist, schreib: veröffentlichen. Dann schalte ich die Seite live.'
+        : ''
+      const reply = [
+        `${bodyText}\n\n${coderResult.site_url}`,
+        publishHint,
+        shouldPromptForAccount ? POST_FIRST_BUILD_AUTH_REPLY : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await emit({
+        type: 'final',
+        text: reply,
+        siteUrl: coderResult.site_url,
+        intent: 'build',
+      })
+      if (shouldPromptForAccount) {
+        await emit({ type: 'auth_prompt' })
+      }
+      return
+    }
+
+    const failureReply =
+      sanitizeReply(coderResult.reply || '') ||
+      'Tut mir leid, da ist gerade etwas schiefgelaufen. Ich leite das an mein Team weiter.'
+    await appendTurn(sessionKey, text, failureReply).catch(() => {})
+    await emit({ type: 'error', text: failureReply, error: coderResult.error })
+  })
+}
+
+export async function GET(req: NextRequest) {
+  const sessionId = cleanSessionId(req.nextUrl.searchParams.get('sessionId'))
+  if (!sessionId) {
+    return NextResponse.json({ messages: [] })
+  }
+
+  const messages = await loadHistory(`web:${sessionId}`).catch((err) => {
+    console.error('loadHistory failed:', err)
+    return []
+  })
+
+  return NextResponse.json({ messages })
+}

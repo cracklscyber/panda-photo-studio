@@ -63,3 +63,23 @@ export async function appendTurn(
       { onConflict: 'phone' }
     )
 }
+
+export async function resetHistory(
+  phone: string,
+  userMessage: string,
+  assistantReply: string
+): Promise<void> {
+  await sb()
+    .from('romy_conversations')
+    .upsert(
+      {
+        phone,
+        messages: [
+          { role: 'user' as const, content: userMessage },
+          { role: 'assistant' as const, content: assistantReply },
+        ],
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'phone' }
+    )
+}

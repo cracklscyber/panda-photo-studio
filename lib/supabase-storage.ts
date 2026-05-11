@@ -22,6 +22,15 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
   return `https://${slug}.${apex}${suffix}`
 }
 
+export function sitePreviewUrl(slug: string, path = 'index.html'): string {
+  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+  const suffix = path && path !== 'index.html' ? `/${path}` : ''
+  return `https://${apex}/site/${slug}${suffix}`
+}
+
 const LIST_PAGE = 100
 
 type RawEntry = {
@@ -95,15 +104,22 @@ export async function listSiteFiles(
 
 export async function downloadSiteFile(slug: string, path: string): Promise<Buffer | null> {
   const key = `${slug}/${path}`
-  const { data, error } = await sb().storage.from(BUCKET).download(key)
-  if (error) {
-    const msg = (error as Error).message || ''
-    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('object not found')) {
-      return null
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/')
+  const res = await fetch(
+    `${baseUrl}/storage/v1/object/${BUCKET}/${encodedKey}?t=${Date.now()}`,
+    {
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      cache: 'no-store',
     }
-    throw new Error(`download ${key}: ${msg}`)
+  )
+  if (!res.ok) {
+    if (res.status === 404) return null
+    const msg = await res.text().catch(() => '')
+    throw new Error(`download ${key}: ${res.status} ${msg.slice(0, 200)}`)
   }
-  const ab = await data.arrayBuffer()
+  const ab = await res.arrayBuffer()
   return Buffer.from(ab)
 }
 

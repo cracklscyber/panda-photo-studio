@@ -1,33 +1,58 @@
-import { Sandbox } from 'e2b'
+import { Sandbox, type SandboxOpts } from 'e2b'
 import {
   listSiteFiles,
   downloadSiteFile,
   uploadSiteFile,
   sitePublicUrl,
+  sitePreviewUrl,
 } from './supabase-storage'
 
 const WORKSPACE = '/home/user/workspace'
+const CLAUDE_HOME = '/home/user/romy-claude'
+const ROMY_E2B_TEMPLATE = process.env.ROMY_E2B_TEMPLATE?.trim() || ''
+const AGENT_TIMEOUT_MS = 230_000
+const NPM_INSTALL_TIMEOUT_MS = 90_000
+const AGENT_MAX_TURNS = 8
+const ALLOW_TEMPLATE_FALLBACK = process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
 
-const ROMY_CODER_SYSTEM_PROMPT = `Du bist Romy, eine freundliche WhatsApp-Assistentin die Websites für lokale Geschäfte erstellt.
+const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Romy, einer freundlichen Chat-Assistentin, die Websites für lokale Geschäfte erstellt.
 
 Du arbeitest in deinem aktuellen Arbeitsverzeichnis (cwd). Dort liegen (falls vorhanden) die aktuellen Dateien der Kundenwebsite. Du kannst sie lesen, bearbeiten oder neue Dateien schreiben mit den Tools Read, Write, Edit, Glob, Grep.
 
-## Bestehende Website des Kunden (wichtig)
-Wenn der Kunde eine URL zu ihrer bestehenden Seite nennt (z.B. "hier ist meine Website", "übernimm die Inhalte von https://..."), nutze **WebFetch** um die Seite zu lesen. Extrahiere:
-- Geschäftsname, Tagline
-- Öffnungszeiten, Adresse, Telefon, E-Mail
-- Services/Angebote/Menü/Preise
-- Farben, Stil-Hinweise (falls erkennbar)
-- Bilder-URLs (die darfst du in die neue Seite einbinden)
+## Grundauftrag
+Arbeite wie eine echte Claude-Code-Session: analysieren, entscheiden, programmieren, prüfen. Romy ist nur die Chat-Verpackung. Die Website soll individuell programmiert wirken, nicht wie ein ausgetauschtes Template.
 
-Nutze diese Inhalte als Basis für die neue Seite. Wenn der Fetch fehlschlägt, sag der Kundin freundlich Bescheid und frag nach den Infos direkt.
+Vermeide generische Baukasten-Strukturen. Kein immer gleicher Ablauf mit nur anderem Namen und anderem Hero-Bild. Leite Layout, Rhythmus, Bildwahl, Text und Abschnitte aus Branche, Link, Stilwunsch und Kundendaten ab. Wenn die Kundin eine Layout-Richtung gewählt hat, nutze sie als kreative Richtung, nicht als starre Vorlage.
+
+Qualität vor Geschwindigkeit: Der erste Entwurf darf ein paar Minuten dauern, wenn er dadurch deutlich hochwertiger, passender und eigenständiger wird.
+
+## Link-Analyse (wichtig)
+Wenn der Kunde einen Link nennt, nutze **WebFetch** für diesen Link, bevor du baust. Das gilt für Websites, Google-/Maps-Einträge, Instagram, Facebook, Airbnb, Booking, Kleinanzeigen, Verzeichnisse und andere öffentliche Profile. Falls aus Versehen mehrere Links geschickt wurden, konzentriere dich auf den ersten klar verwertbaren Link und überfordere den Prozess nicht.
+
+Extrahiere so viel wie möglich:
+- Geschäftsname / Markenname / Objektname
+- Branche oder Art des Angebots
+- Tagline, Tonalität, Stil, Farben und Bildsprache
+- Adresse, Stadt, Region, Anfahrtshinweise
+- Öffnungszeiten, Check-in/Check-out-Zeiten oder Verfügbarkeits-Hinweise
+- Telefon, E-Mail, WhatsApp, Kontaktformular, Social Links
+- Services, Leistungen, Menü, Preise, Pakete, Kurse, Produkte oder Fahrzeug-/Immobilien-/Zimmer-Angebote
+- Bei Airbnb-/Fewo-/Hotel-Links: Name der Unterkunft, Gastgebername falls sichtbar, Ort/Adresse soweit sichtbar, Anzahl Zimmer/Schlafzimmer/Betten/Bäder/Gäste, Ausstattung, Hausregeln, Besonderheiten, Zielgruppe, Preise soweit sichtbar
+- Bei Restaurants/Cafés: Speisen, Getränke, Reservierung, Küchenrichtung, Atmosphäre
+- Bei Beauty/Fitness/Studio: Behandlungen/Kurse, Preise, Trainer/Team, Buchungsmöglichkeiten
+- Bilder-URLs aus der Seite, wenn sie öffentlich und stabil erreichbar wirken. Nutze Kunden-/Profilbilder bevorzugt vor Stockbildern.
+
+Nutze diese Inhalte als Basis für die neue Seite. Wenn einzelne Links durch Login, Cookie-Walls, Captcha oder technische Sperren nicht lesbar sind, arbeite mit den lesbaren Informationen aus anderen Links weiter. Sag am Ende kurz, welche wichtigen Infos noch fehlen, aber baue trotzdem einen ersten Entwurf. Erfinde keine konkreten Daten wie Preise, Öffnungszeiten, Zimmerzahl oder Adresse, wenn du sie nicht im Link findest oder der Kunde sie nicht genannt hat.
 
 ## Einfach bauen, nicht rückfragen
 Stell KEINE Rückfragen bevor du baust. Nicht "welche Farbe?", nicht "welcher Stil?", nicht "welche Abschnitte?". Du bekommst den Branchentyp (z.B. Nagelstudio, Friseur, Café) — daraus machst du selbständig eine hübsche, passende Seite mit guten Defaults:
 - **Farben & Stil:** wähle eine branchenpassende Palette. Nagelstudio/Kosmetik → sanftes Rosé/Beige/Creme mit elegantem Serif-Font. Friseur → warme Erdtöne oder modernes Schwarz/Weiß. Café/Bäckerei → warme Brauntöne. Handwerk → kräftige, bodenständige Farben. Restaurant → je nach Küche. Im Zweifel: ein modernes, minimalistisches Design.
 - **Abschnitte (Standard):** Hero mit Name + Tagline, "Über uns" (2–3 Sätze Platzhalter), "Leistungen" oder "Angebot" (3–5 typische Services der Branche als Platzhalter), "Öffnungszeiten" (Platzhalter), "Kontakt" (Platzhalter-Adresse/Tel). Der Kunde kann später konkret anpassen.
 - **Inhalt:** realistische, hochwertige Platzhaltertexte in gepflegtem Deutsch, keine Lorem-Ipsum-Texte, keine Angaben die der Kunde definitiv nicht hat (keine erfundenen Preise, keine erfundenen Öffnungszeiten — Platzhalter wie "Mo–Fr 9–18 Uhr (anpassen)" sind okay).
-- **Bilder:** hochwertige, passende Unsplash-URLs (https://images.unsplash.com/…) als Platzhalter, die zum Thema passen. Keine lokalen Pfade.
+- **Bilder:** Es gibt nur drei zulässige Quellen für Bilder, in dieser Reihenfolge (siehe ausführlich im Abschnitt "Bilder" weiter unten):
+  1. Vom Kunden mitgeschickte Bilder (höchste Priorität, immer nutzen wenn vorhanden).
+  2. URLs aus der unten stehenden verifizierten Whitelist — alle anderen Unsplash-IDs sind verboten.
+  3. Stilisiertes Foto-Placeholder-Element für Stellen, wo der Kunde später ein eigenes Foto liefern soll.
 
 Erst NACHDEM die Seite gebaut ist, darfst du die Kundin fragen ob sie konkrete Infos (Name, Öffnungszeiten, eigene Bilder) nachliefern möchte — aber nicht vorher.
 
@@ -52,7 +77,7 @@ Inspiration: openstudiosberlin.com, bloomandbeyondberlin.de, daluma.de, engelvoe
 
 **Hero-Section (das wichtigste Element):**
 - IMMER full-bleed Hintergrundbild (height: 90-100vh) mit Overlay-Text — kein kleines zentriertes Bild
-- Bild lifestyle/authentisch, natürliches Licht — Unsplash-URL, gerne hochwertig
+- Bild lifestyle/authentisch, natürliches Licht — NUR aus der Whitelist unten oder vom Kunden mitgeschickt. NIEMALS Foto-IDs aus dem Gedächtnis erfinden.
 - Dunkles Overlay über dem Bild für Text-Lesbarkeit: \`linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.5))\`
 - Headline kurz (3-7 Wörter), confident
 - Sub-Tagline ein Satz, ruhig
@@ -111,6 +136,128 @@ document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 
 **CTAs IMMER konkret:** "Termin buchen", "Speisekarte ansehen", "Anfahrt", "Anrufen", "Reservieren" — niemals "Erfahren Sie mehr" oder "Klick mich".
 
+## Bilder (HARTE REGEL — keine erfundenen URLs)
+
+**Halluzinierte Unsplash-IDs sind das größte Qualitätsproblem.** Du darfst NIEMALS eine Foto-ID aus dem Gedächtnis erfinden — viele halluzinierte IDs ergeben 404 und der Browser zeigt ein hässliches blaues Fragezeichen.
+
+**Erlaubte Bildquellen — nur diese drei:**
+
+### 1. Bilder vom Kunden (höchste Priorität)
+Wenn der Kunde Bilder im Chat mitgeschickt hat, nutze sie zuerst — als Hero, in der Galerie, als Team-Foto, je nach Kontext. Wenn aus der Nachricht klar erkennbar ist, was es ist (Geschäftsfotos, Logo, Produktbilder, Innenraum) → direkt einbauen, NICHT zurückfragen. Nur wenn wirklich gar kein Kontext da ist (Bild ohne jede Beschreibung) eine kurze Rückfrage.
+
+### 2. Verifizierte Whitelist (für Hero, Galerie-Hintergründe, Atmosphäre)
+Du DARFST ausschließlich diese URLs verwenden. Jede andere Unsplash-URL ist VERBOTEN.
+
+URL-Format: \`https://images.unsplash.com/photo-{ID}?w=1600&q=80&auto=format&fit=crop\`
+
+\`\`\`
+Café / Bäckerei / Coffeeshop:
+- 1495474472287-4d71bcdd2085
+- 1509042239860-f550ce710b93
+- 1453614512568-c4024d13c247
+- 1497636577773-f1231844b336
+- 1554118811-1e0d58224f24
+- 1559925393-8be0ec4767c8
+- 1521017432531-fbd92d768814
+
+Friseur / Barber / Salon:
+- 1521590832167-7bcbfaa6381f
+- 1599351431202-1e0f0137899a
+- 1503951914875-452162b0f3f1
+- 1562322140-8baeececf3df
+
+Florist / Blumenladen:
+- 1487530811176-3780de880c2d
+- 1490750967868-88aa4486c946
+- 1416879595882-3373a0480b5b
+
+Restaurant / Bistro / Food:
+- 1517248135467-4c7edcad34c4
+- 1414235077428-338989a2e8c0
+- 1583394838336-acd977736f90
+- 1525610553991-2bede1a236e2
+- 1466978913421-dad2ebd01d17
+- 1567696911980-2eed69a46042
+- 1546833999-b9f581a1996d
+- 1571781926291-c477ebfd024b
+- 1582719471384-894fbb16e074
+
+Handwerk / Werkstatt:
+- 1604654894610-df63bc536371
+- 1503236823255-94609f598e71
+- 1604654894611-6973b376cbde
+- 1610890716171-6b1bb98ffd09
+
+Kosmetik / Nagelstudio / Beauty:
+- 1556909114-f6e7ad7d3136
+- 1556228720-195a672e8a03
+- 1581009146145-b5ef050c2e1e
+- 1532634922-8fe0b757fb13
+
+Fitness / Wellness / Yoga:
+- 1571019613454-1cb2f99b2d8b
+- 1540497077202-7c8a3999166f
+- 1540555700478-4be289fbecef
+
+Hundetraining / Tiere / Haustier-Service:
+- 1548199973-03cce0bbc87b
+- 1587300003388-59208cc962cb
+- 1552053831-71594a27632d
+
+Büro / Kanzlei / Beratung / Generic Business:
+- 1607082348824-0a96f2a4b9da
+- 1556228453-efd6c1ff04f6
+- 1576091160550-2173dba999ef
+- 1505740420928-5e560c06d30e
+
+Autohaus / Fahrzeuge:
+- 1503376780353-7e6692767b70
+- 1492144534655-ae79c964c9d7
+- 1549924231-f129b911e442
+\`\`\`
+
+Wähle 1-3 URLs, die zur Branche und zur Stimmung passen (warm, ruhig, hochwertig). Falls die Branche nicht direkt aufgeführt ist (z.B. Tierarzt, Fahrschule, IT-Dienstleister), nutze "Büro / Kanzlei / Beratung / Generic Business" oder die jeweils thematisch nächste Kategorie.
+
+### 3. Foto-Placeholder (für Stellen, wo der Kunde später eigene Fotos liefern soll)
+
+Wenn du eine Bildstelle brauchst, wo ein **konkretes Foto des Kunden** hingehört — z.B. ein Team-Portrait, ein spezifisches Produkt, ein Innenraum-Bild des EIGENEN Geschäfts, oder zusätzliche Galerie-Plätze über die Whitelist hinaus — dann KEINE \`<img>\`-Tags mit ausgedachten URLs. Stattdessen ein gestyltes Placeholder-Element:
+
+\`\`\`html
+<div class="photo-placeholder" aria-label="Platzhalter für eigenes Foto">
+  <span>Dein Foto</span>
+  <small>Schick es Romy im Chat</small>
+</div>
+\`\`\`
+
+\`\`\`css
+.photo-placeholder {
+  aspect-ratio: 4 / 3;
+  background: #F2EEE6;
+  border: 1px dashed #C8C0B0;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #8A8275;
+  padding: 1.5rem;
+}
+.photo-placeholder span {
+  font-size: 0.85rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.photo-placeholder small {
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+  opacity: 0.8;
+}
+\`\`\`
+
+Das Placeholder soll **wirken wie ein bewusst designtes Element**, nicht wie ein Fehler. Es sagt klar: "hier kommt dein Foto hin". Niemals ein leeres \`<img>\` oder eine erfundene URL — das blaue Fragezeichen ist tabu.
+
 ## Regeln für den Code
 - Die Haupt-Einstiegsseite ist immer index.html im cwd.
 - Vollständiges, in sich geschlossenes HTML (<!doctype html>, <html>, <head>, <body>).
@@ -122,7 +269,11 @@ document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 - Deutschsprachiger Inhalt falls nicht anders gewünscht.
 
 ## Antwort an den Kunden
-Nachdem du die Dateien bearbeitet hast, gib eine kurze WhatsApp-taugliche Zusammenfassung in 1-3 Sätzen auf Deutsch auf was du gemacht hast. Schreib ganz natürlich, wie in einem normalen WhatsApp-Chat.
+Nachdem du die Dateien bearbeitet hast, gib eine kurze Chat-taugliche Zusammenfassung in 1-3 Sätzen auf Deutsch auf was du gemacht hast. Schreib ganz natürlich, wie in einem normalen Chat.
+
+**Wenn es der ERSTE Build dieser Seite war UND der Kunde hat keine eigenen Fotos mitgeschickt:** Häng EINEN zusätzlichen Satz an, in dem du nach Fotos fragst und Generierung anbietest. Beispiel: "Übrigens, ich hab erstmal Beispielbilder reingepackt — hast du eigene Fotos für mich? Sonst kann ich dir auch welche generieren." Nur diesen einen Satz, nicht mehrere Fragen.
+
+**Wenn es ein FOLGE-Build ist (also Anpassung):** Frag NICHT nochmal nach Fotos. Nur die kurze Zusammenfassung der Änderung.
 
 **Harte Regeln für die Antwort (absolut verboten):**
 - Keine Codeblöcke (weder \`\`\`…\`\`\` noch \`inline\`).
@@ -130,11 +281,13 @@ Nachdem du die Dateien bearbeitet hast, gib eine kurze WhatsApp-taugliche Zusamm
 - Keine Dateinamen oder Pfade (nicht \`index.html\`, \`styles.css\`, \`/assets/…\`).
 - Keine Sternchen (*): kein *Fett*, kein **Bold**, keine Aufzählungen mit *.
 - Keine Markdown-Überschriften (#).
-- Keine Emojis — auch nicht 😊🎉👍💭✨. Wenn überhaupt ein Akzent, dann typografisches Zeichen (· – →).
+- Keine Emojis, auch nicht 😊🎉👍💭✨. Wenn überhaupt ein Akzent, dann typografisches Zeichen (· →).
+- KEINE langen Gedankenstriche (—). Nutze Komma, Punkt oder Klammern.
+- NIEMALS die Wörter "Cool" oder "professionell" verwenden. Stattdessen: "Klar", "Alles klar", "Geht klar". Für Qualitätsbeschreibung: "hochwertig", "sauber", "stimmig", aber nie "professionell".
 - Keine Farb-Hex-Codes, keine CSS-Eigenschaften.
 - Keine technischen Begriffe wie "deployed", "committed", "Build", "Repository".
 
-Schreib so wie eine Freundin dir in WhatsApp schreiben würde. Fließtext, normaler Satzbau, Punkt-Komma. Wiederhol keine Infos, die der Kunde schon weiß.
+Schreib so wie eine Freundin dir im Chat schreiben würde. Fließtext, normaler Satzbau, Punkt-Komma. Wiederhol keine Infos, die der Kunde schon weiß.
 
 Gib deine Antwort an den Kunden als allerletzte Nachricht aus, nachdem alle Datei-Änderungen fertig sind.`
 
@@ -173,6 +326,410 @@ function safeReply(raw: string | undefined, fallback: string): string {
   const cleaned = sanitizeReply((raw ?? '').trim())
   if (cleaned.length < 3) return fallback
   return cleaned
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function extractFirstUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s<>"']+|www\.[^\s<>"']+/i)
+  if (!match) return null
+  const raw = match[0].replace(/[),.;]+$/g, '')
+  return raw.startsWith('http') ? raw : `https://${raw}`
+}
+
+function extractUrlFromContext(
+  userMessage: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): string | null {
+  return (
+    extractFirstUrl(userMessage) ||
+    [...history].reverse().map((m) => extractFirstUrl(m.content)).find(Boolean) ||
+    null
+  )
+}
+
+function firstMatch(source: string, patterns: RegExp[]): string {
+  for (const pattern of patterns) {
+    const match = source.match(pattern)
+    const value = match?.[1]?.replace(/\s+/g, ' ').trim()
+    if (value) return value
+  }
+  return ''
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/--&gt;|-->/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&ouml;/g, 'ö')
+    .replace(/&auml;/g, 'ä')
+    .replace(/&uuml;/g, 'ü')
+    .replace(/&Ouml;/g, 'Ö')
+    .replace(/&Auml;/g, 'Ä')
+    .replace(/&Uuml;/g, 'Ü')
+    .replace(/&szlig;/g, 'ß')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+async function fetchWebsiteSnapshot(url: string): Promise<{
+  url: string
+  title: string
+  description: string
+  text: string
+  email: string
+  phone: string
+}> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12_000)
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; RomyBot/1.0; +https://halloromy.com)',
+        accept: 'text/html,application/xhtml+xml',
+      },
+      redirect: 'follow',
+      cache: 'no-store',
+    })
+    const html = await res.text()
+    const title =
+      firstMatch(html, [
+        /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+        /<title[^>]*>([\s\S]*?)<\/title>/i,
+      ]) || new URL(url).hostname.replace(/^www\./, '')
+    const description = firstMatch(html, [
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
+      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
+    ])
+    const text = stripHtml(html).slice(0, 6000)
+    const email = firstMatch(text, [/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/i])
+    const fullEmail = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || ''
+    const phone = text.match(/(?:\+49|0)[0-9\s()./-]{7,}/)?.[0]?.trim() || ''
+    return {
+      url,
+      title,
+      description,
+      text,
+      email: fullEmail || email,
+      phone,
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function inferServices(text: string): string[] {
+  const lower = text.toLowerCase()
+  const candidates: Array<[string, string]> = [
+    ['hundetraining', 'Hundetraining'],
+    ['hundecoach', 'Hundecoaching'],
+    ['hundeschule', 'Hundeschule'],
+    ['gassiservice', 'Gassiservice'],
+    ['verhaltenskorrektur', 'Verhaltenskorrektur'],
+    ['coaching', 'Coaching'],
+    ['beratung', 'Beratung'],
+    ['training', 'Training'],
+    ['workshop', 'Workshops'],
+    ['therapie', 'Therapie'],
+    ['kosmetik', 'Kosmetik'],
+    ['massage', 'Massage'],
+    ['yoga', 'Yoga'],
+    ['kurs', 'Kurse'],
+    ['seminar', 'Seminare'],
+    ['fotografie', 'Fotografie'],
+    ['design', 'Design'],
+  ]
+  const found = candidates.filter(([key]) => lower.includes(key)).map(([, label]) => label)
+  return Array.from(new Set(found)).slice(0, 4)
+}
+
+function isDogBusiness(text: string): boolean {
+  return /\b(hund|hunde|hundcoach|hundecoach|hundetrainer|hundetraining|hundeschule|gassi|welpe|welpen|dog)\b/i.test(text)
+}
+
+function inferLayoutChoice(style: string): 'trust' | 'editorial' | 'friendly' {
+  const lower = style.toLowerCase()
+  if (/gewaehltes layout:\s*1|gewähltes layout:\s*1|\blayout:\s*1\b/.test(lower)) return 'trust'
+  if (/gewaehltes layout:\s*2|gewähltes layout:\s*2|\blayout:\s*2\b/.test(lower)) return 'editorial'
+  if (/gewaehltes layout:\s*3|gewähltes layout:\s*3|\blayout:\s*3\b/.test(lower)) return 'friendly'
+  if (/\b2\b|editorial|magazin|typo/.test(lower)) return 'editorial'
+  if (/\b3\b|freundlich|nahbar|persoenlich|persönlich|karten/.test(lower)) return 'friendly'
+  return 'trust'
+}
+
+function inferBusinessName(title: string, url: string): string {
+  const parts = title
+    .split(/\s+[|–-]\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const generic = /^(home|startseite|willkommen|website|hundetrainer|beratung|coaching|training|leistungen)$/i
+  const useful = parts.find((part) => !generic.test(part) && /[a-zäöüß]+\s+[a-zäöüß]+/i.test(part))
+  return useful || parts.find((part) => !generic.test(part)) || parts[0] || new URL(url).hostname.replace(/^www\./, '')
+}
+
+function runFastLinkBuildHtml(snapshot: Awaited<ReturnType<typeof fetchWebsiteSnapshot>>, style: string): string {
+  const businessName = inferBusinessName(snapshot.title, snapshot.url)
+  const sourceText = `${snapshot.title} ${snapshot.description} ${snapshot.text} ${style}`
+  const dogBusiness = isDogBusiness(sourceText)
+  const layout = inferLayoutChoice(style)
+  const description =
+    snapshot.description ||
+    'Ein klarer, warmer Webauftritt mit Fokus auf Angebot, Vertrauen und Kontakt.'
+  const services = inferServices(`${snapshot.title} ${snapshot.description} ${snapshot.text}`)
+  const serviceList = services.length > 0 ? services : dogBusiness ? ['Hundecoaching', 'Einzeltraining', 'Beratung'] : ['Angebot', 'Beratung', 'Kontakt']
+  const hero = dogBusiness
+    ? layout === 'editorial'
+      ? 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=1600&q=80&auto=format&fit=crop'
+      : layout === 'friendly'
+        ? 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=1600&q=80&auto=format&fit=crop'
+        : 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=1600&q=80&auto=format&fit=crop'
+    : 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1600&q=80&auto=format&fit=crop'
+  const accent = dogBusiness ? '#7f6a4f' : '#8d7a62'
+  const statement = dogBusiness
+    ? 'Ein ruhiger erster Entwurf für Menschen, die ihrem Hund mehr Sicherheit, Orientierung und Vertrauen geben möchten.'
+    : 'Ein reduzierter Auftritt, der die wichtigsten Informationen aus der bestehenden Website klarer und ruhiger bündelt.'
+  const cardText = dogBusiness
+    ? 'Klar strukturiert für Besucher, die schnell verstehen sollen, wie Training, Coaching und Beratung ablaufen.'
+    : 'Aus den vorhandenen Informationen übernommen und für eine klare Website-Struktur vorbereitet.'
+  const layoutClass = `layout-${layout}`
+  const styleNote = style.toLowerCase().includes('beige')
+    ? 'minimalistisch, modern und warm'
+    : 'ruhig, modern und hochwertig'
+  const contactRows = [
+    snapshot.phone ? `<a href="tel:${escapeHtml(snapshot.phone)}">${escapeHtml(snapshot.phone)}</a>` : '',
+    snapshot.email ? `<a href="mailto:${escapeHtml(snapshot.email)}">${escapeHtml(snapshot.email)}</a>` : '',
+    `<a href="${escapeHtml(snapshot.url)}">Website ansehen</a>`,
+  ].filter(Boolean)
+
+  return `<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(businessName)}</title>
+  <style>
+    :root { --bg:#faf8f3; --ink:#25221d; --muted:#746d63; --line:#ddd4c7; --accent:${accent}; --soft:#f1ebe1; }
+    * { box-sizing:border-box; } html { scroll-behavior:smooth; } body { margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+    a { color:inherit; text-decoration:none; } .hero { min-height:92vh; position:relative; display:grid; align-items:end; overflow:hidden; padding:clamp(22px,4vw,54px); }
+    .hero::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg, rgba(30,25,19,.72), rgba(30,25,19,.28) 55%, rgba(30,25,19,.12)), url("${hero}") center/cover; animation:zoom 18s ease-in-out infinite alternate; }
+    @keyframes zoom { from { transform:scale(1); } to { transform:scale(1.07); } }
+    .hero-inner { position:relative; color:white; max-width:760px; padding:12vh 0; } .eyebrow { font-size:12px; letter-spacing:.16em; text-transform:uppercase; opacity:.82; }
+    h1 { font-size:clamp(42px,6.8vw,82px); line-height:1.04; margin:18px 0; letter-spacing:0; max-width:760px; } h2 { font-size:clamp(30px,5vw,58px); line-height:1.1; margin:0 0 22px; }
+    p { font-size:17px; line-height:1.75; color:var(--muted); } .hero p { max-width:680px; color:rgba(255,255,255,.9); font-size:clamp(18px,2vw,23px); }
+    .cta { display:inline-flex; margin-top:30px; border:1px solid rgba(255,255,255,.72); padding:14px 19px; border-radius:4px; }
+    section { padding:105px 28px; } .wrap { max-width:1120px; margin:0 auto; } .statement { max-width:920px; font-size:clamp(30px,5vw,62px); line-height:1.12; color:var(--ink); }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:42px; } .card { border:1px solid var(--line); background:#fffdf8; padding:28px; min-height:190px; border-radius:4px; }
+    .card h3 { margin:0 0 12px; font-size:22px; } .split { display:grid; grid-template-columns:1.05fr .95fr; gap:54px; align-items:center; }
+    .panel { background:var(--soft); border:1px solid var(--line); padding:42px; border-radius:4px; } .contact { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; }
+    .contact a { border-bottom:1px solid var(--accent); padding-bottom:4px; color:var(--ink); } footer { padding:42px 28px; border-top:1px solid var(--line); color:var(--muted); }
+    .layout-editorial .hero { align-items:center; } .layout-editorial .hero-inner { padding-top:18vh; }
+    .layout-friendly .card { background:#fffaf2; } .layout-friendly .hero::before { background:linear-gradient(rgba(30,25,19,.2), rgba(30,25,19,.55)), url("${hero}") center/cover; }
+    @media (max-width:800px) { section { padding:72px 22px; } .hero { padding:22px; } .grid,.split { grid-template-columns:1fr; } h1 { font-size:46px; } }
+  </style>
+</head>
+<body class="${layoutClass}">
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">${escapeHtml(styleNote)}</div>
+      <h1>${escapeHtml(businessName)}</h1>
+      <p>${escapeHtml(description)}</p>
+      <a class="cta" href="#kontakt">Kontakt aufnehmen</a>
+    </div>
+  </header>
+  <section><div class="wrap"><p class="statement">${escapeHtml(statement)}</p></div></section>
+  <section><div class="wrap"><h2>Angebot</h2><div class="grid">${serviceList
+    .map(
+      (service) =>
+        `<article class="card"><h3>${escapeHtml(service)}</h3><p>${escapeHtml(cardText)}</p></article>`
+    )
+    .join('')}</div></div></section>
+  <section><div class="wrap split"><div><h2>Über ${escapeHtml(businessName)}</h2><p>${escapeHtml(
+    snapshot.text.slice(0, 420) || description
+  )}</p></div><div class="panel"><p>Romy hat die bestehende Website analysiert und daraus einen ersten, schnellen Entwurf gebaut. Details wie Bilder, konkrete Texte und Angebotsblöcke können direkt im Chat verfeinert werden.</p></div></div></section>
+  <section id="kontakt"><div class="wrap"><h2>Kontakt</h2><p>Die wichtigsten Kontaktpunkte sind sichtbar, damit Besucher schnell den nächsten Schritt machen können.</p><div class="contact">${contactRows.join('')}</div></div></section>
+  <footer><div class="wrap">${escapeHtml(businessName)}</div></footer>
+</body>
+</html>`
+}
+
+async function runFastLinkFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult | null> {
+  const t0 = Date.now()
+  const url = extractUrlFromContext(input.userMessage, input.history || [])
+  if (!url) return null
+  try {
+    const snapshot = await fetchWebsiteSnapshot(url)
+    const html = runFastLinkBuildHtml(
+      snapshot,
+      [
+        ...(input.history || []).map((m) => m.content),
+        `Gewähltes Layout: ${input.userMessage}`,
+      ].join('\n')
+    )
+    await uploadSiteFile(input.slug, 'index.html', html, 'text/html')
+    return {
+      ok: true,
+      reply:
+        'Fertig, ich habe deinen Link analysiert und daraus einen ersten schnellen Entwurf gebaut. Ich habe Name, Beschreibung und Kontaktpunkte übernommen, soweit sie öffentlich lesbar waren.',
+      files_changed: ['index.html'],
+      site_url: sitePreviewUrl(input.slug),
+      duration_ms: Date.now() - t0,
+      cost_usd: null,
+      sandbox_id: null,
+      was_warm: false,
+      log: [{ step: 'fast_link_first_build', ms: Date.now() - t0, detail: { url } }],
+    }
+  } catch (err) {
+    return null
+  }
+}
+
+async function createRomySandbox(
+  opts: SandboxOpts & { apiKey: string }
+): Promise<Sandbox> {
+  if (ROMY_E2B_TEMPLATE) {
+    return Sandbox.create(ROMY_E2B_TEMPLATE, opts)
+  }
+  return Sandbox.create(opts)
+}
+
+async function runFastFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult> {
+  const t0 = Date.now()
+  const message = input.userMessage
+  const explicitName = message.match(/(?:heisse|heiße|heisst|heißt|name ist|ich bin)\s+([^.,\n-]+)/i)?.[1]?.trim()
+  const personName = explicitName
+    ?.replace(/\b(hundcoach|hundetrainer|hundetraining|hundecoach|coach|trainer|autohaus|café|cafe)\b/gi, '')
+    .replace(/\s+(in|aus|und|mit|biete)\s+.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const location =
+    message.match(/\bin\s+([A-Za-zÄÖÜäöüß-]+)/i)?.[1]?.replace(/^./, (c) => c.toUpperCase()) ||
+    (/bonn/i.test(message) ? 'Bonn' : /köln|koeln/i.test(message) ? 'Köln' : 'deiner Nähe')
+  const isDog = isDogBusiness(message)
+  const isCar = /autohaus|fahrzeug|autos?|wagen|gebrauchtwagen/i.test(message)
+  const isCafe = /café|cafe|kaffee|bäckerei|baeckerei|bistro/i.test(message)
+  const isBeauty = /kosmetik|nagel|beauty|massage|salon/i.test(message)
+  const isFitness = /yoga|fitness|personal trainer|studio|wellness/i.test(message)
+  const businessName =
+    isDog
+      ? personName
+        ? `Hundetraining ${personName.charAt(0).toUpperCase()}${personName.slice(1)}`
+        : 'Hundetraining'
+      : explicitName?.replace(/\s+(und|in)\s+.*/i, '').trim() ||
+        (isCar ? 'Autohaus' : isCafe ? 'Café' : isBeauty ? 'Studio' : isFitness ? 'Training Studio' : 'Deine Website')
+  const hero = isDog
+    ? 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=1600&q=80&auto=format&fit=crop'
+    : isCar
+      ? 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1600&q=80&auto=format&fit=crop'
+      : isCafe
+        ? 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1600&q=80&auto=format&fit=crop'
+        : isBeauty
+          ? 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1600&q=80&auto=format&fit=crop'
+          : isFitness
+            ? 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1600&q=80&auto=format&fit=crop'
+            : 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1600&q=80&auto=format&fit=crop'
+  const secondImage = isDog
+    ? 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=1600&q=80&auto=format&fit=crop'
+    : isCar
+      ? 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1600&q=80&auto=format&fit=crop'
+      : hero
+  const detail = isDog
+    ? 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=1600&q=80&auto=format&fit=crop'
+    : isCar
+      ? 'https://images.unsplash.com/photo-1549924231-f129b911e442?w=1600&q=80&auto=format&fit=crop'
+      : secondImage
+  const accent = isDog ? '#5f7d62' : isCar ? '#8d735b' : isCafe ? '#8a6042' : isBeauty ? '#b98486' : '#6f7f68'
+  const heroLine = isDog
+    ? 'Hundetraining mit Ruhe, Struktur und Vertrauen.'
+    : isCar
+      ? 'Fahrzeuge, Beratung und Angebote klar präsentiert.'
+      : isCafe
+        ? 'Ein warmer Auftritt für Kaffee, Genuss und Besuch.'
+        : isBeauty
+          ? 'Ein ruhiger Auftritt für Behandlungen, Stil und Termine.'
+          : 'Ein klarer Webauftritt, der dein Angebot sofort verständlich macht.'
+  const services = isDog
+    ? ['Online-Webinare', 'Live-Training', 'Alltagscoaching']
+    : isCar
+      ? ['Aktuelle Fahrzeuge', 'Beratung', 'Probefahrt']
+      : isCafe
+        ? ['Kaffee & Angebot', 'Besuch vor Ort', 'Kontakt']
+        : isBeauty
+          ? ['Behandlungen', 'Beratung', 'Termine']
+          : ['Angebot', 'Beratung', 'Kontakt']
+  const serviceCopy = isDog
+    ? [
+        'Strukturierte Einheiten für Menschen, die ihren Hund besser verstehen und sicherer führen möchten.',
+        `Praxisnahes Training auf einem großzügigen Grundstück in ${location}, mit Ruhe, Klarheit und Wiederholung.`,
+        'Begleitung für Alltag, Rückruf, Leinenführung und mehr Vertrauen zwischen Mensch und Hund.',
+      ]
+    : [
+        'Der wichtigste Bereich deiner Website, klar erklärt und schnell erfassbar.',
+        'Vertrauen aufbauen, Fragen beantworten und den nächsten Schritt leicht machen.',
+        'Kontakt, Standort und Anfrage sichtbar platzieren, ohne Umwege.',
+      ]
+  const html = `<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${businessName} | ${location}</title>
+  <style>
+    :root { --bg:#f7f4ef; --ink:#20201e; --muted:#6f6a63; --line:#ded7cc; --accent:${accent}; --soft:${isDog ? '#edf3ea' : '#fffaf2'}; }
+    * { box-sizing: border-box; } html { scroll-behavior:smooth; } body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+    a { color:inherit; text-decoration:none; } .hero { min-height:92vh; display:grid; align-items:end; padding:32px; position:relative; overflow:hidden; }
+    .hero:before { content:""; position:absolute; inset:0; background:linear-gradient(90deg, rgba(20,18,16,.68), rgba(20,18,16,.30) 58%, rgba(20,18,16,.16)), url("${hero}") center/cover; transform:scale(1.03); animation:ken 20s ease-in-out infinite alternate; }
+    @keyframes ken { from { transform:scale(1.02); } to { transform:scale(1.08); } }
+    .hero > div { position:relative; max-width:980px; color:white; padding:10vh 0; } .eyebrow { letter-spacing:.16em; text-transform:uppercase; font-size:12px; opacity:.82; }
+    h1 { font-size:clamp(44px,8vw,96px); line-height:.95; margin:18px 0; max-width:850px; letter-spacing:0; }
+    .lead { font-size:clamp(18px,2vw,24px); line-height:1.5; max-width:680px; opacity:.92; }
+    .cta { display:inline-flex; margin-top:34px; border:1px solid rgba(255,255,255,.7); padding:14px 20px; border-radius:4px; }
+    section { padding:110px 32px; } .wrap { max-width:1120px; margin:0 auto; } .statement { font-size:clamp(32px,5vw,64px); line-height:1.08; max-width:920px; }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:44px; } .card { background:var(--soft); border:1px solid var(--line); padding:28px; min-height:210px; border-radius:6px; }
+    .card h3 { margin:0 0 14px; font-size:22px; } .card p, .text p { color:var(--muted); line-height:1.7; }
+    .split { display:grid; grid-template-columns:1fr 1fr; gap:50px; align-items:center; } .panel { background:#ebe3d8; padding:44px; border:1px solid var(--line); }
+    .cars { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; } .car { border-top:1px solid var(--line); padding-top:18px; color:var(--muted); }
+    .photo { min-height:430px; background:center/cover; border-radius:6px; } .photo.one { background-image:url("${secondImage}"); } .photo.two { background-image:url("${detail}"); }
+    footer { padding:48px 32px; border-top:1px solid var(--line); color:var(--muted); }
+    @media (max-width:800px) { .grid,.split,.cars { grid-template-columns:1fr; } section { padding:72px 22px; } .hero { padding:22px; } }
+  </style>
+</head>
+<body>
+  <header class="hero"><div><div class="eyebrow">${isDog ? `Hundetraining in ${location}` : location}</div><h1>${businessName}</h1><p class="lead">${heroLine}</p><a class="cta" href="#kontakt">${isDog ? 'Training anfragen' : 'Anfrage starten'}</a></div></header>
+  <section><div class="wrap"><p class="statement">${isDog ? 'Ein ruhiger erster Entwurf für Menschen, die mit ihrem Hund mehr Sicherheit, Orientierung und Vertrauen aufbauen möchten.' : 'Ein sauberer erster Entwurf mit warmem Look, klarer Struktur und viel Raum für dein Angebot.'}</p></div></section>
+  <section><div class="wrap"><div class="grid">${services
+    .map((service, index) => `<article class="card"><h3>${service}</h3><p>${serviceCopy[index] || serviceCopy[0]}</p></article>`)
+    .join('')}</div></div></section>
+  <section><div class="wrap split"><div class="photo one" aria-label="Atmosphärisches Bild"></div><div class="text"><h2>${isDog ? 'Training, das im Alltag ankommt' : 'Angebot im Fokus'}</h2><p>${isDog ? 'Diese Seite ist vorbereitet für Webinare, Live-Training, Beratungsangebote, Ablauf und Kontakt. Eigene Bilder und konkrete Kursdetails können als Nächstes direkt ergänzt werden.' : 'Diese Seite ist vorbereitet für Leistungen, Bilder, Preise, Öffnungszeiten und Kontakt. Alles kann im Chat weiter angepasst werden.'}</p></div></div></section>
+  <section><div class="wrap split"><div class="text"><h2>${isDog ? 'Online und vor Ort' : 'Klar und aktuell'}</h2><p>${isDog ? `Online-Webinare und Training auf großem Grundstück in ${location} bekommen jeweils einen eigenen, klaren Platz.` : 'Besucher sehen schnell, worum es geht, wie sie Kontakt aufnehmen und warum sie dir vertrauen können.'}</p></div><div class="photo two" aria-label="Detailbild"></div></div></section>
+  <section id="kontakt"><div class="wrap split"><div><h2>Kontakt in ${location}</h2><p class="lead">${businessName} · Adresse, Telefon, E-Mail und Öffnungszeiten können hier direkt ergänzt werden.</p></div><a class="cta" style="color:var(--ink);border-color:var(--accent)" href="mailto:">Kontakt aufnehmen</a></div></section>
+  <footer><div class="wrap">${businessName} · ${location}</div></footer>
+</body>
+</html>`
+
+  await uploadSiteFile(input.slug, 'index.html', html, 'text/html')
+  return {
+    ok: true,
+    reply: 'Fertig, ich habe dir einen ersten schnellen Entwurf gebaut. Ich habe erstmal passende Beispielbilder eingefügt, eigene Fotos kannst du mir danach direkt schicken.',
+    files_changed: ['index.html'],
+    site_url: sitePreviewUrl(input.slug),
+    duration_ms: Date.now() - t0,
+    cost_usd: null,
+    sandbox_id: null,
+    was_warm: false,
+    log: [{ step: 'fast_first_build', ms: Date.now() - t0 }],
+  }
 }
 
 const META_BUCKET = 'customer-sites'
@@ -264,11 +821,17 @@ interface RomyCoderInput {
   userMessage: string
   imageUrl?: string
   history?: Array<{ role: 'user' | 'assistant'; content: string }>
+  isFirstBuild?: boolean
 }
 
 export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResult> {
-  const { slug, userMessage, imageUrl, history = [] } = input
+  const { slug, userMessage, imageUrl, history = [], isFirstBuild = false } = input
   const t0 = Date.now()
+
+  if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl && extractUrlFromContext(userMessage, history)) {
+    const fastResult = await runFastLinkFirstBuild(input)
+    if (fastResult) return fastResult
+  }
 
   const credential = process.env.ANTHROPIC_API_KEY || ''
   const isOAuth = credential.startsWith('sk-ant-oat')
@@ -283,19 +846,26 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
 
   try {
     currentStep = 'warm_lookup'
-    sandbox = await findWarmSandbox(slug, mark)
+    sandbox = isFirstBuild ? null : await findWarmSandbox(slug, mark)
     wasWarm = !!sandbox
-    mark('warm_lookup', { hit: wasWarm, id: sandbox?.sandboxId })
+    mark('warm_lookup', {
+      hit: wasWarm,
+      id: sandbox?.sandboxId,
+      skipped: isFirstBuild ? 'fresh first build' : false,
+    })
 
     if (!sandbox) {
       currentStep = 'sandbox_create'
-      sandbox = await Sandbox.create({
+      sandbox = await createRomySandbox({
         apiKey: process.env.E2B_API_KEY!,
         timeoutMs: WARM_TIMEOUT_MS,
         envs: { [agentEnvVar]: credential },
         metadata: { slug, service: SERVICE_TAG },
       })
-      mark('sandbox_created', { id: sandbox.sandboxId })
+      mark('sandbox_created', {
+        id: sandbox.sandboxId,
+        template: ROMY_E2B_TEMPLATE || 'base',
+      })
 
       currentStep = 'mkdir_workspace'
       const mk = await sandbox.commands.run(`mkdir -p ${WORKSPACE}`, {
@@ -322,13 +892,33 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
         )
       }
 
-      currentStep = 'npm_install'
-      const install = await sandbox.commands.run(
-        'cd /tmp && npm init -y >/dev/null 2>&1 && npm install --include=optional @anthropic-ai/claude-agent-sdk @anthropic-ai/claude-code 2>&1 | tail -8'
-      )
-      mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-400) })
-      if (install.exitCode !== 0) {
-        throw new Error(`npm install failed: ${install.stderr.slice(-400)}`)
+      currentStep = 'claude_preflight'
+      const preflight = await sandbox.commands.run(
+        `cd ${CLAUDE_HOME} && test -x ${CLAUDE_HOME}/node_modules/.bin/claude && node -e "import('@anthropic-ai/claude-agent-sdk').then(()=>console.log('OK')).catch(()=>process.exit(1))"`,
+        { timeoutMs: 15_000 }
+      ).catch((err) => ({
+        exitCode: -1,
+        stdout: '',
+        stderr: (err as Error).message,
+      }))
+      mark('claude_preflight', {
+        exitCode: preflight.exitCode,
+        stdout: preflight.stdout.slice(-200),
+        stderr: preflight.stderr.slice(-200),
+      })
+
+      if (preflight.exitCode !== 0) {
+        currentStep = 'npm_install'
+        const install = await sandbox.commands.run(
+          `mkdir -p ${CLAUDE_HOME} && cd ${CLAUDE_HOME} && npm init -y >/dev/null 2>&1 && npm install --include=optional @anthropic-ai/claude-agent-sdk @anthropic-ai/claude-code 2>&1 | tail -8`,
+          { timeoutMs: NPM_INSTALL_TIMEOUT_MS }
+        )
+        mark('npm_install', { exitCode: install.exitCode, tail: install.stdout.slice(-400) })
+        if (install.exitCode !== 0) {
+          throw new Error(`npm install failed: ${(install.stderr || install.stdout).slice(-400)}`)
+        }
+      } else {
+        mark('npm_install_skipped', { reason: 'claude already available' })
       }
     } else {
       mark('bootstrap_skipped', { reason: 'warm_reconnect' })
@@ -336,10 +926,10 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
 
     currentStep = 'locate_claude_bin'
     const locate = await sandbox.commands.run(
-      'ls -la /tmp/node_modules/.bin/claude 2>&1; readlink -f /tmp/node_modules/.bin/claude 2>&1'
+      `ls -la ${CLAUDE_HOME}/node_modules/.bin/claude 2>&1; readlink -f ${CLAUDE_HOME}/node_modules/.bin/claude 2>&1`
     )
     mark('locate_claude_bin', { stdout: locate.stdout.slice(-300) })
-    const claudeBin = '/tmp/node_modules/.bin/claude'
+    const claudeBin = `${CLAUDE_HOME}/node_modules/.bin/claude`
 
     let imageAssetPath: string | null = null
     if (imageUrl && imageUrl.startsWith('data:')) {
@@ -378,10 +968,25 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
       promptParts.push('---')
     }
     promptParts.push(`Neue Nachricht vom Kunden: ${userMessage}`)
+    const hasLinkInContext =
+      /https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(userMessage) ||
+      history.slice(-8).some((h) => /https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(h.content))
+    if (hasLinkInContext) {
+      promptParts.push(
+        'Wichtig: Die Unterhaltung enthält einen Link. Nutze WebFetch für den Link, analysiere die Quelle, extrahiere die wichtigsten Geschäftsdaten und baue daraus direkt einen ersten Entwurf. Nicht nochmal nach Designrichtung fragen, wenn die Kundin sie gerade genannt hat.'
+      )
+    }
+    if (isFirstBuild) {
+      promptParts.push(
+        `Hinweis: Das ist der ERSTE Build dieser Seite. ${imageAssetPath ? 'Der Kunde hat eigene Bilder mitgeschickt, nutze sie.' : 'Der Kunde hat noch keine eigenen Bilder geschickt — nutze die Whitelist-URLs für Hero/Galerie und das Foto-Placeholder für individuelle Stellen. Frag am Ende deiner Antwort nach eigenen Fotos und biete Generierung an (siehe System-Prompt-Regel).'}`
+      )
+    } else {
+      promptParts.push(`Hinweis: Das ist eine ANPASSUNG einer bestehenden Seite, kein erster Build. Frag NICHT nach Fotos, mach nur die gewünschte Änderung.`)
+    }
     if (imageAssetPath) {
       promptParts.push(
         `Kunde hat ein Bild mitgeschickt. Es liegt in deinem cwd unter: ${imageAssetPath}\n` +
-          `Du kannst es via <img src="${imageAssetPath}"> in die Website einbauen (z.B. als Logo, Coverbild, oder in die Galerie — je nach Kontext). Frag im Zweifel kurz nach, wofür es gedacht ist.`
+          `Bau es DIREKT in die Website ein (Hero, Galerie, Über-uns, Logo — je nach Kontext der Nachricht). Wenn aus der Nachricht erkennbar ist, was es ist, NICHT zurückfragen sondern einfach nutzen. Nur wenn wirklich gar kein Kontext da ist (Bild ohne jeden Text), kurz nachfragen.`
       )
     } else if (imageUrl) {
       promptParts.push(`Kunde hat ein Bild mitgeschickt, aber es konnte nicht übernommen werden.`)
@@ -414,7 +1019,7 @@ const stream = query({
   prompt: ${JSON.stringify(fullPrompt)},
   options: {
     model: 'claude-sonnet-4-6',
-    maxTurns: 10,
+    maxTurns: ${AGENT_MAX_TURNS},
     permissionMode: 'bypassPermissions',
     cwd: ${JSON.stringify(WORKSPACE)},
     allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch'],
@@ -454,7 +1059,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
   } : null,
 }))
 `
-    const scriptPath = `/tmp/agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mjs`
+    const scriptPath = `${CLAUDE_HOME}/agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mjs`
     currentStep = 'script_write'
     await sandbox.files.write(scriptPath, agentScript)
     mark('script_written', { path: scriptPath })
@@ -463,8 +1068,8 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     type CommandResult = { exitCode: number; stdout: string; stderr: string }
     let run: CommandResult
     try {
-      run = await sandbox.commands.run(`cd /tmp && node ${scriptPath}`, {
-        timeoutMs: 4 * 60_000,
+      run = await sandbox.commands.run(`cd ${CLAUDE_HOME} && node ${scriptPath}`, {
+        timeoutMs: AGENT_TIMEOUT_MS,
         envs: { [agentEnvVar]: credential },
       })
     } catch (e) {
@@ -496,9 +1101,23 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     }
 
     const changedFiles = parsed.changed || []
+    const discoveredFilesRes = await sandbox.commands.run(
+      `cd ${JSON.stringify(WORKSPACE)} && find . -maxdepth 4 -type f | sed 's#^./##'`
+    ).catch(() => ({ exitCode: -1, stdout: '', stderr: '' }))
+    const discoveredFiles =
+      discoveredFilesRes.exitCode === 0
+        ? discoveredFilesRes.stdout
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+        : []
+    const uploadCandidates = Array.from(
+      new Set(changedFiles.length > 0 ? changedFiles : discoveredFiles)
+    )
     const uploaded: string[] = []
-    for (const rel of changedFiles) {
+    for (const rel of uploadCandidates) {
       if (rel.startsWith('node_modules/') || rel.startsWith('.git/')) continue
+      if (rel.includes('/node_modules/') || rel.includes('/.git/')) continue
       const readRes = await sandbox.commands.run(
         `cat ${JSON.stringify(WORKSPACE + '/' + rel)} | base64`
       )
@@ -512,21 +1131,21 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       parsed.assistant,
       run.exitCode === 0
         ? 'Okay, fertig — schau gerne mal auf deiner Seite nach.'
-        : 'Da ist leider etwas schiefgelaufen. Magst du es nochmal versuchen?'
+        : 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'
     )
 
-    const ok = run.exitCode === 0 && !parsed.result?.is_error
+    const ok = run.exitCode === 0 && !parsed.result?.is_error && uploaded.length > 0
     if (ok) {
       preserveSandbox = true
       await saveWarmMeta(slug, sandbox.sandboxId)
       mark('warm_meta_saved', { id: sandbox.sandboxId })
     }
 
-    return {
+    const result: RomyCoderResult = {
       ok,
       reply,
       files_changed: uploaded,
-      site_url: sitePublicUrl(slug),
+      site_url: isFirstBuild ? sitePreviewUrl(slug) : sitePublicUrl(slug),
       duration_ms: Date.now() - t0,
       cost_usd: parsed.result?.total_cost_usd ?? null,
       sandbox_id: sandbox.sandboxId,
@@ -535,13 +1154,32 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       stderr_tail: run.stderr.slice(-800),
       log,
     }
+    if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl && !ok) {
+      const fallback = await runFastFirstBuild(input)
+      fallback.log = [
+        ...(log || []),
+        { step: 'ai_first_build_failed_fallback_used', ms: Date.now() - t0 },
+        ...(fallback.log || []),
+      ]
+      return fallback
+    }
+    return result
   } catch (err) {
     mark('error', { step: currentStep, message: (err as Error).message })
+    if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl) {
+      const fallback = await runFastFirstBuild(input)
+      fallback.log = [
+        ...(log || []),
+        { step: 'ai_first_build_exception_fallback_used', ms: Date.now() - t0, detail: { step: currentStep } },
+        ...(fallback.log || []),
+      ]
+      return fallback
+    }
     return {
       ok: false,
-      reply: 'Entschuldigung, es gab einen Fehler. Bitte versuche es nochmal!',
+      reply: 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.',
       files_changed: [],
-      site_url: sitePublicUrl(slug),
+      site_url: isFirstBuild ? sitePreviewUrl(slug) : sitePublicUrl(slug),
       duration_ms: Date.now() - t0,
       cost_usd: null,
       sandbox_id: sandbox?.sandboxId || null,

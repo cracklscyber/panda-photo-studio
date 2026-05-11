@@ -20,19 +20,19 @@ export default function AGB() {
 
         <Section title="1. Geltungsbereich">
           <p>
-            Diese Nutzungsbedingungen gelten für die Nutzung des WhatsApp-Service &quot;Romy&quot; sowie der Website halloromy.com, betrieben von Zoe Christiansen, Steinstraße 15, 10119 Berlin (&quot;Anbieterin&quot;).
+            Diese Nutzungsbedingungen gelten für die Nutzung des Website-Chat-Service &quot;Romy&quot; sowie der Website halloromy.com, betrieben von Zoe Christiansen, Steinstraße 15, 10119 Berlin (&quot;Anbieterin&quot;).
           </p>
         </Section>
 
         <Section title="2. Leistungsbeschreibung">
           <p>
-            Romy ist ein KI-gestützter Assistent, der über WhatsApp erreichbar ist. Romy unterstützt bei der Erstellung professioneller Produktfotos, Marketing-Inhalten und digitalen Services. Die Anbieterin behält sich vor, den Funktionsumfang jederzeit zu ändern oder zu erweitern.
+            Romy ist ein KI-gestützter Assistent, der über den Website-Chat erreichbar ist. Romy unterstützt bei der Erstellung und Pflege einfacher Websites und digitaler Inhalte. Die Anbieterin behält sich vor, den Funktionsumfang jederzeit zu ändern oder zu erweitern.
           </p>
         </Section>
 
         <Section title="3. Nutzungsvoraussetzungen">
           <p>
-            Die Nutzung setzt ein aktives WhatsApp-Konto voraus. Nutzer:innen müssen mindestens 16 Jahre alt sein. Mit der Kontaktaufnahme über WhatsApp erklären sich Nutzer:innen mit diesen Nutzungsbedingungen einverstanden.
+            Nutzer:innen müssen mindestens 16 Jahre alt sein. Mit der Kontaktaufnahme über den Website-Chat erklären sich Nutzer:innen mit diesen Nutzungsbedingungen einverstanden.
           </p>
         </Section>
 

@@ -55,7 +55,7 @@ const GlassCard: React.FC<{ children: React.ReactNode; scale?: number }> = ({ ch
   </div>
 );
 
-/* ═══ Scene 1: Romy.ai + Website per WhatsApp (0–80) ═══ */
+/* ═══ Scene 1: Romy.ai + Website per Chat (0–80) ═══ */
 const Scene1: React.FC = () => {
   const frame = useCurrentFrame();
   const logoScale = useSpring(0);
@@ -82,14 +82,14 @@ const Scene1: React.FC = () => {
           letterSpacing: "0.05em",
           fontFamily: "system-ui, sans-serif",
         }}>
-          Website per WhatsApp
+          Website per Chat
         </div>
       </GlassCard>
     </AbsoluteFill>
   );
 };
 
-/* ═══ Scene 2: Keine Agentur. Kein Baukasten. Nur WhatsApp. (80–160) ═══ */
+/* ═══ Scene 2: Keine Agentur. Kein Baukasten. Nur Chat. (80–160) ═══ */
 const Scene2: React.FC = () => {
   const frame = useCurrentFrame();
   const cardScale = useSpring(0);
@@ -132,7 +132,7 @@ const Scene2: React.FC = () => {
             opacity: line3,
             transform: `translateY(${(1 - line3) * 15}px)`,
           }}>
-            Nur WhatsApp.
+            Nur Chat.
           </div>
         </div>
       </GlassCard>
@@ -269,7 +269,7 @@ const Scene5: React.FC = () => {
           <span style={{
             fontSize: 32, fontWeight: 600, color: "white", fontFamily: "system-ui, sans-serif",
           }}>
-            Jetzt auf WhatsApp starten
+            Jetzt kostenlos testen
           </span>
           <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12h14M12 5l7 7-7 7" />

@@ -51,6 +51,7 @@ export function middleware(req: NextRequest) {
       rest.length > 0
         ? `/custom-site/${aliasSlug}/${rest.join('/')}`
         : `/custom-site/${aliasSlug}`
+    url.searchParams.set('preview', '1')
     return NextResponse.rewrite(url)
   }
 

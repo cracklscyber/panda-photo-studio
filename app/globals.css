@@ -3,56 +3,27 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 45, 38, 64;
-  --background-start: #E8E0F0;
-  --background-mid: #D6E5F5;
-  --background-end: #F5E1D8;
-  --accent-lilac: #C8A8E0;
-  --accent-sky: #A8C8E8;
-  --accent-rose: #E8A0B0;
-  --text-primary: #2D2640;
-  --text-secondary: #6B6080;
-  --text-hint: #9B92A8;
+  --foreground-rgb: 26, 23, 20;
+  --background: #f1ead9;
+  --brand-cream: #f1ead9;
+  --brand-cream-soft: #f5efe2;
+  --brand-sage: #b8c7ab;
+  --brand-peach: #dac9b0;
+  --brand-ink: #1a1714;
+  --brand-ink-soft: #2a2522;
+  --accent-green: #21e66b;
+  --accent-green-dark: #16b756;
+  --text-primary: #1a1714;
+  --text-secondary: #5c5147;
+  --text-hint: #877d70;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background:
-    radial-gradient(ellipse at 20% 20%, var(--background-start) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 50%, var(--background-mid) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, var(--background-end) 0%, transparent 50%),
-    linear-gradient(135deg, var(--background-start) 0%, var(--background-mid) 50%, var(--background-end) 100%);
+  background: var(--background);
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
-}
-
-/* Ambient gradient orbs */
-body::before,
-body::after {
-  content: '';
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.25;
-  z-index: 0;
-  pointer-events: none;
-}
-
-body::before {
-  width: 600px;
-  height: 600px;
-  background: var(--accent-lilac);
-  top: -200px;
-  right: -200px;
-}
-
-body::after {
-  width: 500px;
-  height: 500px;
-  background: var(--accent-sky);
-  bottom: -150px;
-  left: -150px;
 }
 
 /* Glassmorphism card */
@@ -111,7 +82,7 @@ body::after {
 }
 
 .chat-container::-webkit-scrollbar-thumb {
-  background: linear-gradient(var(--accent-lilac), var(--accent-sky));
+  background: var(--accent-green);
   border-radius: 3px;
 }
 
@@ -144,6 +115,20 @@ body::after {
 
 .lumino-glow {
   animation: glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes romy-hero-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(-0.6deg);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0) rotate(0.7deg);
+  }
+}
+
+.romy-hero-float {
+  animation: romy-hero-float 6s ease-in-out infinite;
+  transform-origin: 50% 80%;
 }
 
 /* Message fade in */

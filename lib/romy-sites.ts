@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
+import { deleteAllSiteFiles } from './supabase-storage'
 
 let _sb: SupabaseClient | null = null
 function sb(): SupabaseClient {
@@ -15,7 +16,7 @@ function sb(): SupabaseClient {
 function anthropicClient(): Anthropic {
   const credential = process.env.ANTHROPIC_API_KEY || ''
   if (credential.startsWith('sk-ant-oat')) {
-    return new Anthropic({ authToken: credential })
+    return new Anthropic({ apiKey: null, authToken: credential })
   }
   return new Anthropic({ apiKey: credential })
 }
@@ -46,6 +47,70 @@ export function slugify(input: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 40) || 'kunde'
+}
+
+function extractFirstUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s<>"']+|www\.[^\s<>"']+/i)
+  if (!match) return null
+  const raw = match[0].replace(/[),.;]+$/g, '')
+  return raw.startsWith('http') ? raw : `https://${raw}`
+}
+
+function cleanTitle(value: string): string {
+  return value
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&ouml;/g, 'ö')
+    .replace(/&auml;/g, 'ä')
+    .replace(/&uuml;/g, 'ü')
+    .replace(/&Ouml;/g, 'Ö')
+    .replace(/&Auml;/g, 'Ä')
+    .replace(/&Uuml;/g, 'Ü')
+    .replace(/&szlig;/g, 'ß')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function inferBusinessNameFromTitle(title: string, url: string): string | null {
+  const parts = cleanTitle(title)
+    .split(/\s+[|–-]\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const generic =
+    /^(home|startseite|willkommen|website|hundetrainer|beratung|coaching|training|leistungen|kontakt)$/i
+  const useful = parts.find(
+    (part) => !generic.test(part) && /[a-zäöüß]+\s+[a-zäöüß]+/i.test(part)
+  )
+  const fallback = parts.find((part) => !generic.test(part)) || parts[0]
+  const name = useful || fallback || new URL(url).hostname.replace(/^www\./, '')
+  return name && !generic.test(name) ? name.slice(0, 60) : null
+}
+
+async function extractBusinessNameFromUrl(url: string): Promise<string | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; RomyBot/1.0; +https://halloromy.com)',
+        accept: 'text/html,application/xhtml+xml',
+      },
+      redirect: 'follow',
+      cache: 'no-store',
+    })
+    const html = await res.text()
+    const title =
+      html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+      html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ||
+      ''
+    return title ? inferBusinessNameFromTitle(title, url) : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function slugExists(slug: string): Promise<boolean> {
@@ -86,6 +151,12 @@ export async function findSiteByDomain(domain: string): Promise<RomySite | null>
 }
 
 async function extractBusinessName(userMessage: string): Promise<string | null> {
+  const url = extractFirstUrl(userMessage)
+  if (url) {
+    const fromUrl = await extractBusinessNameFromUrl(url)
+    if (fromUrl) return fromUrl
+  }
+
   const client = anthropicClient()
   try {
     const res = await client.messages.create({
@@ -139,13 +210,22 @@ export async function getOrCreateSite(
     if (again) return again
     throw new Error(`Could not create romy_site for ${phone}: ${error.message}`)
   }
-  // Register the subdomain with Vercel so HTTPS cert gets issued.
+  return data as RomySite
+}
+
+export async function publishSite(phone: string): Promise<RomySite | null> {
+  const site = await findSiteByPhone(phone)
+  if (!site) return null
+
+  // Register the subdomain only after the customer explicitly confirms publish.
   // Hobby plan can't wildcard-cert with external DNS, so we add each subdomain.
   const { ensureVercelSubdomain } = await import('./vercel-domains')
-  await ensureVercelSubdomain(slug).catch((err) =>
-    console.error('ensureVercelSubdomain failed:', err)
-  )
-  return data as RomySite
+  await ensureVercelSubdomain(site.slug)
+  await sb()
+    .from('romy_sites')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('phone', phone)
+  return site
 }
 
 export async function updateSiteSandboxId(
@@ -196,5 +276,30 @@ export async function resetQuota(phone: string): Promise<void> {
       callback_requested_at: null,
       updated_at: new Date().toISOString(),
     })
+    .eq('phone', phone)
+}
+
+async function clearWarmMetaForSlug(slug: string): Promise<void> {
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
+  await fetch(
+    `${baseUrl}/storage/v1/object/romy-sandbox-meta/warm/${slug}.json`,
+    { method: 'DELETE', headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  ).catch(() => {})
+}
+
+export async function resetSite(phone: string): Promise<void> {
+  const existing = await findSiteByPhone(phone)
+  if (!existing) return
+
+  await deleteAllSiteFiles(existing.slug).catch((err) =>
+    console.error('resetSite deleteAllSiteFiles failed:', err)
+  )
+  await clearWarmMetaForSlug(existing.slug).catch((err) =>
+    console.error('resetSite clearWarmMeta failed:', err)
+  )
+  await sb()
+    .from('romy_sites')
+    .delete()
     .eq('phone', phone)
 }

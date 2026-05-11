@@ -22,7 +22,7 @@ export function WhatsAppLink({
       rel="noopener noreferrer"
       className={className}
       onClick={() => {
-        window.fbq?.('track', 'Lead', { content_name: 'whatsapp_click' })
+        window.fbq?.('track', 'Contact', { content_name: 'whatsapp_click' })
       }}
     >
       {children}

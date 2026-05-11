@@ -36,6 +36,18 @@ interface BuildLogRow {
   created_at?: string
 }
 
+interface CustomerRow {
+  session_id: string
+  email: string | null
+  name: string | null
+  provider: string | null
+  auth_user_id: string | null
+  first_build_at: string | null
+  stripe_customer_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 function formatRelative(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 60_000) return 'gerade eben'
@@ -79,7 +91,7 @@ export default async function ConvoPage({
     process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   )
 
-  const [convoRes, siteRes, buildsRes] = await Promise.all([
+  const [convoRes, siteRes, buildsRes, customerRes] = await Promise.all([
     sb
       .from('romy_conversations')
       .select('phone, messages, updated_at')
@@ -92,6 +104,7 @@ export default async function ConvoPage({
       .eq('phone', phone)
       .order('created_at', { ascending: false })
       .limit(20),
+    sb.from('romy_customers').select('*').eq('session_id', phone).maybeSingle(),
   ])
 
   const messages =
@@ -100,6 +113,7 @@ export default async function ConvoPage({
       : []) || []
   const site = (siteRes.data as SiteRow | null) || null
   const builds: BuildLogRow[] = (buildsRes.data as BuildLogRow[]) || []
+  const customer = (customerRes.data as CustomerRow | null) || null
   const totalCost = builds.reduce((s, b) => s + (b.cost_usd || 0), 0)
 
   return (
@@ -166,6 +180,48 @@ export default async function ConvoPage({
         </section>
 
         <aside className="space-y-4">
+          <div className="rounded-xl border border-neutral-200 bg-white p-4">
+            <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-500">
+              Kunde
+            </h3>
+            {customer ? (
+              <dl className="space-y-1.5 text-sm">
+                <div>
+                  <dt className="text-xs text-neutral-500">Name</dt>
+                  <dd>{customer.name || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-neutral-500">E-Mail</dt>
+                  <dd className="break-all">{customer.email || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-neutral-500">Login</dt>
+                  <dd>
+                    {customer.auth_user_id
+                      ? `${customer.provider || 'oauth'} verbunden`
+                      : 'nicht verbunden'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-neutral-500">Erster Build</dt>
+                  <dd className="text-xs">
+                    {customer.first_build_at
+                      ? formatRelative(customer.first_build_at)
+                      : '—'}
+                  </dd>
+                </div>
+                {customer.stripe_customer_id && (
+                  <div>
+                    <dt className="text-xs text-neutral-500">Stripe</dt>
+                    <dd className="font-mono text-xs">verbunden</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p className="text-sm text-neutral-400">Noch kein Kunde.</p>
+            )}
+          </div>
+
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
             <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-500">
               Quota & Bezahlung

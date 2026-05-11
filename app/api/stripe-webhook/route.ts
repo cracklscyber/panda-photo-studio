@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { setPaid } from '@/lib/romy-sites'
+import {
+  setStripeCustomer,
+  findCustomerByStripeId,
+} from '@/lib/romy-customers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -59,11 +63,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 })
   }
 
+  const obj = event.data?.object || {}
+
   if (
     event.type === 'checkout.session.completed' ||
     event.type === 'invoice.paid'
   ) {
-    const obj = event.data?.object || {}
     const phone =
       (obj.client_reference_id as string | undefined) ||
       ((obj.metadata as Record<string, string> | undefined)?.client_reference_id)
@@ -75,10 +80,40 @@ export async function POST(req: NextRequest) {
 
     try {
       await setPaid(phone, true)
+      const stripeCustomerId = (obj.customer as string | undefined) || null
+      if (stripeCustomerId && phone.startsWith('web:')) {
+        await setStripeCustomer(phone, stripeCustomerId).catch((err) =>
+          console.error('setStripeCustomer failed:', err)
+        )
+      }
       console.log('stripe paid set for phone', phone, 'event', event.type)
     } catch (err) {
       console.error('setPaid failed:', err)
       return NextResponse.json({ error: 'db update failed' }, { status: 500 })
+    }
+  }
+
+  if (
+    event.type === 'customer.subscription.deleted' ||
+    (event.type === 'customer.subscription.updated' &&
+      (obj.status === 'canceled' || obj.status === 'unpaid'))
+  ) {
+    const stripeCustomerId = obj.customer as string | undefined
+    if (stripeCustomerId) {
+      const customer = await findCustomerByStripeId(stripeCustomerId).catch(
+        () => null
+      )
+      if (customer) {
+        await setPaid(customer.session_id, false).catch((err) =>
+          console.error('setPaid(false) failed:', err)
+        )
+        console.log(
+          'stripe subscription canceled for',
+          customer.session_id,
+          'event',
+          event.type
+        )
+      }
     }
   }
 

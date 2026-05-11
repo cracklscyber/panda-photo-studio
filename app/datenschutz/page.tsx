@@ -20,7 +20,7 @@ export default function Datenschutz() {
 
         <Section title="1. Verantwortliche">
           <p>
-            Verantwortlich für die Datenverarbeitung auf dieser Website und im Zusammenhang mit dem WhatsApp-Service „Romy" ist:
+            Verantwortlich für die Datenverarbeitung auf dieser Website und im Zusammenhang mit dem Website-Chat „Romy" ist:
           </p>
           <p className="mt-3">
             Zoe Christiansen<br />
@@ -33,7 +33,7 @@ export default function Datenschutz() {
 
         <Section title="2. Allgemeines zur Datenverarbeitung">
           <p>
-            Wir verarbeiten personenbezogene Daten unserer Nutzer:innen grundsätzlich nur, soweit dies zur Bereitstellung einer funktionsfähigen Website sowie des WhatsApp-Services erforderlich ist. Die Verarbeitung erfolgt regelmäßig nur nach Einwilligung (Art. 6 Abs. 1 lit. a DSGVO) oder zur Vertragserfüllung bzw. Durchführung vorvertraglicher Maßnahmen (Art. 6 Abs. 1 lit. b DSGVO).
+            Wir verarbeiten personenbezogene Daten unserer Nutzer:innen grundsätzlich nur, soweit dies zur Bereitstellung einer funktionsfähigen Website sowie des Website-Chat-Services erforderlich ist. Die Verarbeitung erfolgt regelmäßig nur nach Einwilligung (Art. 6 Abs. 1 lit. a DSGVO) oder zur Vertragserfüllung bzw. Durchführung vorvertraglicher Maßnahmen (Art. 6 Abs. 1 lit. b DSGVO).
           </p>
         </Section>
 
@@ -46,15 +46,12 @@ export default function Datenschutz() {
           </p>
         </Section>
 
-        <Section title="4. WhatsApp-Kommunikation mit Romy">
+        <Section title="4. Chat-Kommunikation mit Romy">
           <p>
-            Wenn Sie Romy über WhatsApp kontaktieren (Nummer +49 163 66 23 276), verarbeiten wir die von Ihnen gesendeten Nachrichteninhalte, Bilder sowie Ihre WhatsApp-Telefonnummer. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung/Anfragebearbeitung) bzw. Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Kontaktaufnahme).
+            Wenn Sie Romy über den Website-Chat kontaktieren, verarbeiten wir die von Ihnen gesendeten Nachrichteninhalte sowie eine technische Sitzungskennung. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung/Anfragebearbeitung) bzw. Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Kontaktaufnahme).
           </p>
           <p className="mt-3">
-            WhatsApp-Nachrichten werden technisch über die <strong>WhatsApp Business Platform (Cloud API)</strong> der Meta Platforms Ireland Ltd. abgewickelt. Dabei können Metadaten (Telefonnummer, Zeitpunkt, Zustellstatus) auch an Meta Platforms Inc. in die USA übertragen werden. Weitere Informationen: <a href="https://www.whatsapp.com/legal/privacy-policy-eea" target="_blank" rel="noopener noreferrer" className="underline">WhatsApp Datenschutzerklärung</a>.
-          </p>
-          <p className="mt-3">
-            Nachrichteninhalte werden zur Bearbeitung Ihrer Anfrage sowie zur Pflege Ihrer Website gespeichert, solange dies für die Leistungserbringung erforderlich ist. Sie können jederzeit die Löschung Ihrer Daten verlangen (siehe Abschnitt 10).
+            Der Chat wird über diese Website bereitgestellt. Nachrichten werden zur Bearbeitung Ihrer Anfrage sowie zur Pflege Ihrer Website gespeichert, solange dies für die Leistungserbringung erforderlich ist. Sie können jederzeit die Löschung Ihrer Daten verlangen (siehe Abschnitt 10).
           </p>
         </Section>
 
@@ -78,7 +75,7 @@ export default function Datenschutz() {
 
         <Section title="7. Cookies">
           <p>
-            Diese Website setzt keine Tracking-Cookies und keine Analyse-Tools ein. Technisch notwendige Sitzungs-Cookies können gesetzt werden, soweit Sie sich in einen Administrationsbereich einloggen. Rechtsgrundlage ist § 25 Abs. 2 Nr. 2 TTDSG.
+            Diese Website kann Meta Pixel einsetzen, um die Wirksamkeit von Werbeanzeigen zu messen und Conversions zuzuordnen. Dabei können technische Kennungen wie _fbp oder _fbc sowie Kampagnenparameter verarbeitet werden. Rechtsgrundlage ist, soweit erforderlich, Ihre Einwilligung nach § 25 Abs. 1 TTDSG und Art. 6 Abs. 1 lit. a DSGVO. Technisch notwendige Sitzungs-Cookies können gesetzt werden, soweit Sie sich in einen Administrationsbereich einloggen. Rechtsgrundlage hierfür ist § 25 Abs. 2 Nr. 2 TTDSG.
           </p>
         </Section>
 
@@ -91,10 +88,10 @@ export default function Datenschutz() {
         <Section title="9. Empfänger der Daten">
           <p>Wir geben personenbezogene Daten ausschließlich an folgende Auftragsverarbeiter weiter:</p>
           <ul className="mt-3 list-disc pl-5 space-y-1">
-            <li>Meta Platforms Ireland Ltd. (WhatsApp Business Platform)</li>
             <li>Vercel Inc. (Hosting)</li>
             <li>Supabase Inc. (Datenbank, EU-Hosting)</li>
             <li>Anthropic PBC (KI-Verarbeitung)</li>
+            <li>Meta Platforms Ireland Ltd. (Werbe- und Conversion-Messung, soweit Meta Pixel aktiv ist)</li>
           </ul>
           <p className="mt-3">
             Mit allen Auftragsverarbeitern bestehen bzw. werden Verträge gemäß Art. 28 DSGVO geschlossen.

@@ -180,8 +180,8 @@ const Bubble: React.FC<{
   );
 };
 
-/* ── WhatsApp chat screen with animation ── */
-const WhatsAppChat: React.FC = () => {
+/* ── Chat screen with animation ── */
+const WebsiteChat: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -465,7 +465,7 @@ export const IPhoneMockupSlide: React.FC = () => {
     >
       <div style={{ opacity: phoneOp, transform: `scale(${phoneScale})` }}>
         <IPhoneFrame>
-          <WhatsAppChat />
+          <WebsiteChat />
         </IPhoneFrame>
       </div>
     </AbsoluteFill>

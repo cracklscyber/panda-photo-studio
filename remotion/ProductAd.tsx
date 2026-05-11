@@ -69,7 +69,7 @@ export const ProductAdSlide: React.FC = () => {
         >
           Produktfotos.
           <br />
-          Per <span style={{ color: "#25D366" }}>WhatsApp</span>.
+          Per <span style={{ color: "#25D366" }}>Chat</span>.
           <br />
           In Sekunden.
         </div>

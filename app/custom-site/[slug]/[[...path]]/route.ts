@@ -28,7 +28,7 @@ function guessContentType(path: string): string {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { slug: string; path?: string[] } }
 ) {
   const { slug } = params
@@ -37,11 +37,14 @@ export async function GET(
   if (!buf) {
     return new Response('Not Found', { status: 404 })
   }
+  const isPreview = req.nextUrl.searchParams.get('preview') === '1'
   return new Response(new Uint8Array(buf), {
     status: 200,
     headers: {
       'content-type': guessContentType(relPath),
-      'cache-control': 'public, max-age=60, must-revalidate',
+      'cache-control':
+        relPath.endsWith('.html') ? 'no-store' : 'public, max-age=60, must-revalidate',
+      ...(isPreview ? { 'x-robots-tag': 'noindex, nofollow' } : {}),
     },
   })
 }

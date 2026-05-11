@@ -1,0 +1,22 @@
+'use client'
+
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+
+let _client: SupabaseClient | null = null
+
+export function browserSupabase(): SupabaseClient {
+  if (!_client) {
+    _client = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim(),
+      {
+        auth: {
+          persistSession: true,
+          detectSessionInUrl: true,
+          autoRefreshToken: true,
+        },
+      }
+    )
+  }
+  return _client
+}

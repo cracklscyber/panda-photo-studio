@@ -30,8 +30,7 @@ export default function Impressum() {
         <section className="mb-10">
           <h2 className="mb-3 text-lg font-semibold">Kontakt</h2>
           <p className="text-neutral-700 leading-relaxed">
-            E-Mail: <a href="mailto:halloromy.ai@gmail.com" className="underline hover:text-neutral-900">halloromy.ai@gmail.com</a><br />
-            WhatsApp: +49 163 66 23 276
+            E-Mail: <a href="mailto:halloromy.ai@gmail.com" className="underline hover:text-neutral-900">halloromy.ai@gmail.com</a>
           </p>
         </section>
 

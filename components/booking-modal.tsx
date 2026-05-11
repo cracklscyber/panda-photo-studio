@@ -59,7 +59,7 @@ export function BookingModal({ url, className, children }: Props) {
                 <div className="max-w-sm">
                   <p className="text-lg font-medium text-neutral-900">Buchungssystem wird gerade eingerichtet</p>
                   <p className="mt-3 text-sm text-neutral-600">
-                    In der Zwischenzeit kannst du Romy direkt auf WhatsApp schreiben — sie meldet sich sofort.
+                    In der Zwischenzeit kannst du Romy direkt im Website-Chat schreiben.
                   </p>
                 </div>
               </div>

@@ -30,6 +30,16 @@ interface SiteRow {
   callback_requested_at: string | null
 }
 
+interface CustomerRow {
+  session_id: string
+  email: string | null
+  name: string | null
+  provider: string | null
+  auth_user_id: string | null
+  first_build_at: string | null
+  stripe_customer_id: string | null
+}
+
 const FREE_LIMIT = 4
 
 interface BuildLogRow {
@@ -109,7 +119,7 @@ export default async function AdminPage({
     process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   )
 
-  const [convosRes, sitesRes, buildsRes] = await Promise.all([
+  const [convosRes, sitesRes, buildsRes, customersRes] = await Promise.all([
     sb
       .from('romy_conversations')
       .select('phone, messages, updated_at')
@@ -121,13 +131,20 @@ export default async function AdminPage({
         'phone, slug, business_name, builds_used, paid, callback_requested_at'
       ),
     sb.from('romy_build_logs').select('phone, cost_usd, ok'),
+    sb
+      .from('romy_customers')
+      .select(
+        'session_id, email, name, provider, auth_user_id, first_build_at, stripe_customer_id'
+      ),
   ])
 
   const convos: ConvoRow[] = (convosRes.data as ConvoRow[]) || []
   const sites: SiteRow[] = (sitesRes.data as SiteRow[]) || []
   const builds: BuildLogRow[] = (buildsRes.data as BuildLogRow[]) || []
+  const customers: CustomerRow[] = (customersRes.data as CustomerRow[]) || []
 
   const siteByPhone = new Map(sites.map((s) => [s.phone, s]))
+  const customerBySession = new Map(customers.map((c) => [c.session_id, c]))
   const costByPhone = new Map<string, { total: number; count: number }>()
   for (const b of builds) {
     const cur = costByPhone.get(b.phone) || { total: 0, count: 0 }
@@ -142,6 +159,7 @@ export default async function AdminPage({
       const messages = (Array.isArray(c.messages) ? c.messages : []) as ChatMessage[]
       const last = messages[messages.length - 1]
       const site = siteByPhone.get(c.phone)
+      const customer = customerBySession.get(c.phone)
       const cost = costByPhone.get(c.phone) || { total: 0, count: 0 }
       return {
         phone: c.phone,
@@ -149,6 +167,7 @@ export default async function AdminPage({
         last,
         messageCount: messages.length,
         site,
+        customer,
         cost,
         live: isLive(c.updated_at),
       }
@@ -218,7 +237,8 @@ export default async function AdminPage({
               <thead className="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500">
                 <tr>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Telefon</th>
+                  <th className="px-4 py-3 font-medium">Session</th>
+                  <th className="px-4 py-3 font-medium">Kunde</th>
                   <th className="px-4 py-3 font-medium">Geschäft</th>
                   <th className="px-4 py-3 font-medium">Letzte Nachricht</th>
                   <th className="px-4 py-3 font-medium">Aktiv</th>
@@ -252,6 +272,30 @@ export default async function AdminPage({
                         className="block hover:text-neutral-900"
                       >
                         {r.phone}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/admin/${encodeURIComponent(r.phone)}`}
+                        className="block"
+                      >
+                        <span className="block truncate font-medium">
+                          {r.customer?.name || r.customer?.email || '—'}
+                        </span>
+                        {r.customer?.email && (
+                          <span className="block truncate text-xs text-neutral-500">
+                            {r.customer.email}
+                          </span>
+                        )}
+                        {r.customer?.auth_user_id ? (
+                          <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                            Konto
+                          </span>
+                        ) : r.customer?.first_build_at ? (
+                          <span className="mt-1 inline-flex rounded-full bg-yellow-50 px-2 py-0.5 text-[11px] text-yellow-700">
+                            Konto fehlt
+                          </span>
+                        ) : null}
                       </Link>
                     </td>
                     <td className="px-4 py-3">

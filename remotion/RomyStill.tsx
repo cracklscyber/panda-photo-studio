@@ -52,7 +52,7 @@ export const RomyStillSlide: React.FC = () => {
             fontFamily: "system-ui, -apple-system, sans-serif",
           }}
         >
-          Website per WhatsApp
+          Website per Chat
         </div>
       </div>
     </AbsoluteFill>
