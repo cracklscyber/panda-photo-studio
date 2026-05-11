@@ -675,10 +675,8 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
         if (dir && dir !== WORKSPACE) {
           await sandbox.commands.run(`mkdir -p ${JSON.stringify(dir)}`)
         }
-        const b64 = buf.toString('base64')
-        await sandbox.commands.run(
-          `echo ${JSON.stringify(b64)} | base64 -d > ${JSON.stringify(target)}`
-        )
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+        await sandbox.files.write(target, ab as ArrayBuffer)
       }
 
       currentStep = 'claude_preflight'

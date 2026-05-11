@@ -25,7 +25,7 @@ const INITIAL_MESSAGE: Message = {
   id: 'romy-hello',
   role: 'assistant',
   content:
-    'Hi, ich bin Romy. Wie das läuft: Du erzählst mir kurz, was du machst — ich bau dir gleich einen ersten Entwurf deiner Website. Danach feilen wir gemeinsam an Texten, Farben und deinen eigenen Fotos. Eine Frage vorab: Hast du schon eine Website oder Social-Media (Instagram, Facebook, Google), wo ich dich finden kann?',
+    'Hi, ich bin Romy — deine persönliche Website-Assistentin. Wir starten mit einem groben Layout, danach machen wir die Feinheiten zusammen. Dafür brauche ich kurz ein paar Infos von dir: Was machst du, wie heißt dein Geschäft, wo bist du, und in welchem Stil hättest du es gerne (modern, klassisch, verspielt, minimal)?',
 }
 
 const ONBOARDING_QUICK_REPLIES = ['Ja', 'Nein']

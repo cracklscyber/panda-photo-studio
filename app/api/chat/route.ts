@@ -30,11 +30,11 @@ const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
 const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
 
 const ACK_FIRST_LINK =
-  'Alles klar, ich analysiere jetzt deinen Link und baue daraus einen ersten Entwurf. Das dauert kurz. Feinheiten machen wir danach.'
+  'Ich schau jetzt auf deinen Link und baue daraus einen ersten Entwurf. Bleib bitte hier im Chat und schließe diese Seite nicht, sonst geht der Entwurf verloren. Feinheiten machen wir danach.'
 const ACK_FIRST_DIRECT =
-  'Alles klar, ich baue dir jetzt einen ersten Entwurf. Beim ersten Mal kann es ein paar Minuten dauern. Feinheiten machen wir danach.'
+  'Ich baue dir jetzt einen ersten Entwurf. Bleib bitte hier im Chat und schließe diese Seite nicht, sonst geht der Entwurf verloren. Feinheiten machen wir danach.'
 const ACK_FOLLOWUP =
-  "Alles klar, ich schau's mir an. Einen Moment, ca. 30 Sekunden."
+  'Mach ich. Bleib bitte hier im Chat und schließe diese Seite nicht, bis ich fertig bin.'
 
 const AUTH_REQUIRED_REPLY =
   'Damit du deine Seite behältst und ich sie weiter für dich pflegen kann, lege bitte kurz dein Kundenkonto an. Das geht in Sekunden mit Google oder E-Mail. Danach speichere ich deinen Chatverlauf, deine Entwürfe und deine Website, und wir machen genau hier weiter.'
