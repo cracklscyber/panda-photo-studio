@@ -25,7 +25,7 @@ const INITIAL_MESSAGE: Message = {
   id: 'romy-hello',
   role: 'assistant',
   content:
-    'Willkommen! Damit ich loslegen kann, eine kurze Frage vorab: Hast du bereits eine Website oder Social-Media-Kanäle (z.B. Instagram, Facebook oder Google), auf denen ich mich über dein Unternehmen informieren kann?',
+    'Hi, ich bin Romy. Wie das läuft: Du erzählst mir kurz, was du machst — ich bau dir gleich einen ersten Entwurf deiner Website. Danach feilen wir gemeinsam an Texten, Farben und deinen eigenen Fotos. Eine Frage vorab: Hast du schon eine Website oder Social-Media (Instagram, Facebook, Google), wo ich dich finden kann?',
 }
 
 const ONBOARDING_QUICK_REPLIES = ['Ja', 'Nein']

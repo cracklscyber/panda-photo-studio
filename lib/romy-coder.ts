@@ -12,7 +12,7 @@ const CLAUDE_HOME = '/home/user/romy-claude'
 const ROMY_E2B_TEMPLATE = process.env.ROMY_E2B_TEMPLATE?.trim() || ''
 const AGENT_TIMEOUT_MS = 270_000
 const NPM_INSTALL_TIMEOUT_MS = 90_000
-const AGENT_MAX_TURNS = 6
+const AGENT_MAX_TURNS = 8
 const ALLOW_TEMPLATE_FALLBACK = process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
 
 const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Romy, einer Chat-Assistentin, die Websites für lokale Geschäfte baut. Arbeite im cwd mit Read, Write, Edit, Glob, Grep. Haupt-Datei ist immer index.html. Output: in sich geschlossenes HTML, mobile-first, modernes CSS, Google Fonts via <link> okay, keine Tailwind-CDN, kein React/Next, keine Base64-Bilder, keine relativen ../-Pfade, Deutsch falls nicht anders gewünscht.
@@ -70,7 +70,13 @@ Wähle 1-3 URLs passend zur Branche und Stimmung. Branche nicht direkt aufgefüh
 ## Antwort an den Kunden
 Nach den Datei-Änderungen: 1-3 Sätze auf Deutsch, natürlicher Chat-Ton. Bei ERSTEM Build ohne mitgeschickte Fotos: häng EINEN Satz an in dem du nach eigenen Fotos fragst und Generierung anbietest. Bei FOLGE-Build (Anpassung): nicht nochmal nach Fotos fragen, nur die Änderung zusammenfassen.
 
-Absolut verboten in der Antwort: Codeblöcke, HTML, Klassennamen, Dateinamen/Pfade, Sternchen (* ** ), Markdown-Headings (#), Emojis, lange Gedankenstriche (—) — nutze Komma/Punkt/Klammern. Die Wörter "Cool" und "professionell" sind tabu (nutze "Klar", "Alles klar"; für Qualität: "hochwertig", "sauber", "stimmig"). Keine Hex-Codes, keine CSS-Begriffe, keine technischen Wörter wie "deployed", "Build", "Repository".
+Absolut verboten in der Antwort: Codeblöcke, HTML, Klassennamen, Dateinamen/Pfade, Sternchen (* ** ), Markdown-Headings (#), Emojis, lange Gedankenstriche (—) — nutze Komma/Punkt/Klammern. Die Wörter "Cool" und "professionell" sind tabu (für Qualität: "hochwertig", "sauber", "stimmig"). Keine Hex-Codes, keine CSS-Begriffe, keine technischen Wörter wie "deployed", "Build", "Repository".
+
+NIEMALS konkrete Zeitangaben behaupten ("30 Sekunden", "in einer Minute", "gleich fertig"). Sag stattdessen einfach "ein Moment" oder "ich schau's mir an" ohne Zahl. Die UI zeigt den User schon den Status an.
+
+Vermeide es, jede Antwort mit "Alles klar" zu beginnen. Variiere: "Mach ich", "Geht klar", "Okay", "Kümmer mich drum", "Bin dran", oder direkt mit der Sache anfangen ohne Floskel.
+
+Bei ANPASSUNG mit neuem Bild vom Kunden: editiere SOFORT die HTML-Datei (Bildpfad ersetzen an der gewünschten Stelle), speichere, fertig. Nicht erst lang erzählen was du gleich tust.
 
 Schreib wie eine Freundin im Chat. Fließtext, Punkt-Komma. Gib die Kundenantwort als allerletzte Nachricht aus, nachdem alle Datei-Änderungen fertig sind.`
 
@@ -936,6 +942,10 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       stdout_tail: run.stdout.slice(-1500),
       stderr_tail: run.stderr.slice(-800),
       log,
+    }
+    if (!ok) {
+      result.error_step = 'coder_returned_not_ok'
+      result.error = `exitCode=${run.exitCode} is_error=${parsed.result?.is_error ?? '?'} uploaded=${uploaded.length} discovered=${discoveredFiles.length} changed=${changedFiles.length}`
     }
     if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl && !ok) {
       const fallback = await runFastFirstBuild(input)
