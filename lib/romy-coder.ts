@@ -732,11 +732,11 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
         const relPath = `assets/upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
         const target = `${WORKSPACE}/${relPath}`
         await sandbox.commands.run(`mkdir -p ${WORKSPACE}/assets`)
-        await sandbox.commands.run(
-          `echo ${JSON.stringify(b64)} | base64 -d > ${JSON.stringify(target)}`
-        )
+        const bytes = Buffer.from(b64, 'base64')
+        const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+        await sandbox.files.write(target, ab as ArrayBuffer)
         imageAssetPath = relPath
-        mark('image_written', { path: relPath })
+        mark('image_written', { path: relPath, bytes: Math.floor((b64.length * 3) / 4) })
       } else {
         mark('image_skip_not_dataurl')
       }
