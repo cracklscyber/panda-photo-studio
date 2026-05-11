@@ -345,7 +345,7 @@ export async function POST(req: NextRequest) {
     await emit({ type: 'ack', text: ack })
 
     const buildStart = Date.now()
-    const BUILD_TIMEOUT_MS = 285_000
+    const BUILD_TIMEOUT_MS = 295_000
     let coderResult: Awaited<ReturnType<typeof runRomyCoder>> | null = null
     let timedOut = false
 
