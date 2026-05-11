@@ -6,6 +6,7 @@ import {
   sitePublicUrl,
   sitePreviewUrl,
 } from './supabase-storage'
+import { extractConfirmedImageUrls } from './romy-image-intent'
 
 const WORKSPACE = '/home/user/workspace'
 const CLAUDE_HOME = '/home/user/romy-claude'
@@ -778,6 +779,16 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
     } else if (imageUrl) {
       promptParts.push(`Kunde hat ein Bild mitgeschickt, aber es konnte nicht übernommen werden.`)
     }
+
+    const confirmedImageUrls = extractConfirmedImageUrls(history)
+    if (confirmedImageUrls.length > 0) {
+      const list = confirmedImageUrls.map((u, i) => `${i + 1}. ${u}`).join('\n')
+      promptParts.push(
+        `Vom Kunden bestätigte, individuell generierte Bilder (URLs sind öffentlich erreichbar — direkt als <img src="..."> einbauen, NICHT herunterladen):\n${list}\n` +
+          `Nutze diese statt Unsplash-Stock-Bildern. Das erste Bild eignet sich meist als Hero, weitere als Galerie. Wenn nur ein Bild da ist, setze es als Hero.`
+      )
+    }
+
     const fullPrompt = promptParts.join('\n')
 
     const agentScript = `

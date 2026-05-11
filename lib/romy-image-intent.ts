@@ -1,0 +1,155 @@
+// Detects explicit user requests to generate / iterate images via Gemini.
+// Pure heuristics — no LLM call — so detection adds zero latency.
+//
+// SAFETY: All callers must check `process.env.ROMY_GEMINI_IMAGES === 'true'`
+// before reacting to the result. When the flag is off, treat as no-op.
+
+import type { ChatMessage } from './romy-chat'
+
+export const IMAGE_DRAFT_MARKER = '[ROMY_IMAGE_DRAFT:'
+export const IMAGE_CONFIRMED_MARKER = '[ROMY_IMAGE_CONFIRMED:'
+
+const GENERATE_TRIGGERS: RegExp[] = [
+  /\b(generier|erstell|mach|erzeug|kreier)[a-zäöüß]*\s+(mir\s+)?(ein|nen|noch|bitte|doch)?\s*(eigenes?|individuelles?|neues?|extra)?\s*(bild|foto|hero|grafik|illustration)/i,
+  /\b(bild|foto|grafik)\s+(generieren|erstellen|machen|erzeugen|kreieren|gestalten)/i,
+  /\b(kannst\s+du|könntest\s+du)\s+.*(bild|foto|grafik)/i,
+  /\b(create|generate|make)\s+(an?\s+)?(image|picture|photo)/i,
+  /\bgeneriere?\s+/i,
+  /\bAI[-\s]?Bild/i,
+  /\bKI[-\s]?Bild/i,
+]
+
+// "Schwache" Trigger - werden nur erkannt, wenn das Wort Bild/Foto auch fällt.
+const STRONG_GENERATE_TRIGGERS: RegExp[] = [
+  /\beigene?s? bild/i,
+  /\beigene?s? foto/i,
+  /\bindividuelle?s? bild/i,
+  /\bindividuelle?s? foto/i,
+]
+
+const ITERATION_TRIGGERS: RegExp[] = [
+  /\bnochmal\b/i,
+  /\bnoch\s*ein(mal|s)?\b/i,
+  /\bandere?s?\b/i,
+  /\banders\b/i,
+  /\bdunkler\b/i,
+  /\bheller\b/i,
+  /\bwärmer\b/i,
+  /\bkälter\b/i,
+  /\bbunter\b/i,
+  /\bweniger\b/i,
+  /\bmehr\b/i,
+  /\bversuch.+nochmal/i,
+  /\b(mach|probier).*(anders|nochmal)/i,
+]
+
+const CONFIRM_TRIGGERS: RegExp[] = [
+  /\b(perfekt|passt|super|ja\s+gut|gefällt mir|behalten|nimm das|nimm es|das ist es|ja\s+das|so ist es gut)\b/i,
+  /^\s*(ja|jo|jep|jap|okay|ok)\s*[.!?]*\s*$/i,
+]
+
+const CANCEL_TRIGGERS: RegExp[] = [
+  /\b(abbrechen|stop|stopp|vergiss|lass|doch nicht|nein lass|nicht generieren)\b/i,
+]
+
+export type ImageIntent =
+  | { kind: 'generate'; rawPrompt: string }
+  | { kind: 'iterate'; rawPrompt: string }
+  | { kind: 'confirm' }
+  | { kind: 'cancel' }
+  | { kind: 'none' }
+
+export function detectImageIntent(
+  userMessage: string,
+  history: ChatMessage[]
+): ImageIntent {
+  const text = userMessage.trim()
+  if (!text) return { kind: 'none' }
+
+  const inDraftMode = history.length > 0 && hasActiveDraft(history)
+
+  // Cancel takes priority when iterating
+  if (inDraftMode && CANCEL_TRIGGERS.some((r) => r.test(text))) {
+    return { kind: 'cancel' }
+  }
+
+  // Confirmation only counts when there's an active draft (otherwise "ja" means something else)
+  if (inDraftMode && CONFIRM_TRIGGERS.some((r) => r.test(text))) {
+    return { kind: 'confirm' }
+  }
+
+  // Iteration only counts when there's an active draft AND user gives modification words
+  if (inDraftMode && ITERATION_TRIGGERS.some((r) => r.test(text))) {
+    return { kind: 'iterate', rawPrompt: text }
+  }
+
+  // Generation trigger — strong words always; "eigenes bild" only with bild/foto
+  const triggered =
+    GENERATE_TRIGGERS.some((r) => r.test(text)) ||
+    STRONG_GENERATE_TRIGGERS.some((r) => r.test(text))
+  if (triggered) {
+    return { kind: 'generate', rawPrompt: text }
+  }
+
+  return { kind: 'none' }
+}
+
+export function hasActiveDraft(history: ChatMessage[]): boolean {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]
+    if (m.role !== 'assistant') continue
+    if (m.content.includes(IMAGE_DRAFT_MARKER)) return true
+    // If the latest assistant message has no draft marker, no active draft.
+    return false
+  }
+  return false
+}
+
+export function extractLatestDraftUrl(history: ChatMessage[]): string | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]
+    if (m.role !== 'assistant') continue
+    const match = m.content.match(/\[ROMY_IMAGE_DRAFT:([^\]]+)\]/)
+    if (match) return match[1]
+    return null
+  }
+  return null
+}
+
+export function extractDraftPromptContext(history: ChatMessage[]): string {
+  // Pull the last user message that triggered the current draft, plus
+  // any iteration tweaks since then. Used to compose a richer prompt
+  // for Gemini on iteration.
+  const out: string[] = []
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]
+    if (m.role === 'user') out.unshift(m.content)
+    if (m.role === 'assistant' && m.content.includes(IMAGE_DRAFT_MARKER)) {
+      // Stop walking back further: this assistant turn is the draft anchor.
+      break
+    }
+  }
+  return out.join(' | ')
+}
+
+export function extractConfirmedImageUrls(history: ChatMessage[]): string[] {
+  const urls: string[] = []
+  const seen = new Set<string>()
+  for (const m of history) {
+    if (m.role !== 'assistant') continue
+    const re = /\[ROMY_IMAGE_CONFIRMED:([^\]]+)\]/g
+    let match: RegExpExecArray | null
+    while ((match = re.exec(m.content)) !== null) {
+      const url = match[1]
+      if (!seen.has(url)) {
+        seen.add(url)
+        urls.push(url)
+      }
+    }
+  }
+  return urls
+}
+
+export function isFeatureEnabled(): boolean {
+  return (process.env.ROMY_GEMINI_IMAGES || '').trim().toLowerCase() === 'true'
+}

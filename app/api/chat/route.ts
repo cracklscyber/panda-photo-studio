@@ -15,6 +15,15 @@ import { sitePublicUrl } from '@/lib/supabase-storage'
 import { loadHistory, appendTurn, resetHistory } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 import {
+  detectImageIntent,
+  isFeatureEnabled as imageFeatureEnabled,
+} from '@/lib/romy-image-intent'
+import {
+  generateDraftImage,
+  confirmDraftImage,
+  cancelDraftImage,
+} from '@/lib/romy-image-session'
+import {
   ensureCustomer,
   findCustomer,
   markFirstBuild,
@@ -266,6 +275,36 @@ export async function POST(req: NextRequest) {
     }
 
     const history = await loadHistory(sessionKey)
+
+    if (imageFeatureEnabled()) {
+      const imageIntent = detectImageIntent(text, history)
+      if (imageIntent.kind !== 'none') {
+        let result
+        if (imageIntent.kind === 'generate') {
+          result = await generateDraftImage({
+            sessionKey,
+            userMessage: imageIntent.rawPrompt,
+            history,
+            isIteration: false,
+          })
+        } else if (imageIntent.kind === 'iterate') {
+          result = await generateDraftImage({
+            sessionKey,
+            userMessage: imageIntent.rawPrompt,
+            history,
+            isIteration: true,
+          })
+        } else if (imageIntent.kind === 'confirm') {
+          result = confirmDraftImage(history)
+        } else {
+          result = cancelDraftImage()
+        }
+        await appendTurn(sessionKey, text, result.reply).catch(() => {})
+        await emit({ type: 'reply', text: result.reply, intent: 'chat' })
+        return
+      }
+    }
+
     if (wantsPublish(text)) {
       const site = await publishSite(sessionKey).catch((err) => {
         console.error('publishSite failed:', err)
