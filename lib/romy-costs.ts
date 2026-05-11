@@ -8,6 +8,8 @@ export interface BuildLogEntry {
   duration_ms: number | null
   was_warm: boolean | null
   user_message: string | null
+  error_step?: string | null
+  error_msg?: string | null
 }
 
 export async function logBuild(entry: BuildLogEntry): Promise<void> {
@@ -28,5 +30,7 @@ export async function logBuild(entry: BuildLogEntry): Promise<void> {
     duration_ms: entry.duration_ms,
     was_warm: entry.was_warm,
     user_message: trimmedMessage,
+    error_step: entry.error_step ?? null,
+    error_msg: entry.error_msg ? entry.error_msg.slice(0, 1000) : null,
   })
 }

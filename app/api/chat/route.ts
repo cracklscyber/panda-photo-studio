@@ -374,6 +374,8 @@ export async function POST(req: NextRequest) {
         duration_ms: Date.now() - buildStart,
         was_warm: !isFirstBuild,
         user_message: text,
+        error_step: timedOut ? 'build_timeout' : 'build_exception',
+        error_msg: (err as Error).message,
       }).catch((logErr) => console.error('logBuild (timeout) failed:', logErr))
 
       const reply = timedOut
@@ -396,6 +398,8 @@ export async function POST(req: NextRequest) {
       duration_ms: coderResult.duration_ms,
       was_warm: coderResult.was_warm,
       user_message: text,
+      error_step: coderResult.ok ? null : (coderResult.error_step ?? 'coder_returned_not_ok'),
+      error_msg: coderResult.ok ? null : (coderResult.error ?? null),
     }).catch((err) => console.error('logBuild failed:', err))
 
     if (coderResult.ok) {
@@ -436,7 +440,6 @@ export async function POST(req: NextRequest) {
     }
 
     const failureReply =
-      sanitizeReply(coderResult.reply || '') ||
       'Tut mir leid, da ist gerade etwas schiefgelaufen. Ich leite das an mein Team weiter.'
     await appendTurn(sessionKey, text, failureReply).catch(() => {})
     await emit({ type: 'error', text: failureReply, error: coderResult.error })
