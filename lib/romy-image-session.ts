@@ -86,11 +86,11 @@ export async function generateDraftImage(opts: {
       filename,
     })
     const intro = opts.isIteration
-      ? 'Anderer Versuch:'
-      : 'Hier ein erster Vorschlag:'
+      ? 'Anderer Versuch.'
+      : 'Hier ein erster Vorschlag.'
     const tail =
       'Sag mir, ob es so passt, oder beschreib was anders soll. Wenn alles gut ist, schreib einfach "passt" und ich nutze es beim nächsten Build.'
-    const reply = `${intro} ${img.url}\n\n${tail}\n\n${IMAGE_DRAFT_MARKER}${img.url}]`
+    const reply = `${intro}\n\n${tail}\n\n${IMAGE_DRAFT_MARKER}${img.url}]`
     return { reply, url: img.url, status: 'draft' }
   } catch (err) {
     console.error('generateDraftImage failed:', err)
@@ -112,7 +112,7 @@ export function confirmDraftImage(history: ChatMessage[]): ImageActionResult {
     }
   }
   return {
-    reply: `Alles klar, ich merke mir das Bild. Beim nächsten Build baue ich es ein.\n\n${IMAGE_CONFIRMED_MARKER}${url}]`,
+    reply: `Gemerkt, ich nutze das Bild beim nächsten Build.\n\n${IMAGE_CONFIRMED_MARKER}${url}]`,
     url,
     status: 'confirmed',
   }

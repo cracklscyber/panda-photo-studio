@@ -34,6 +34,27 @@ type WebsiteChatProps = {
   className?: string
 }
 
+function parseAssistantMessage(content: string): { text: string; imageUrl?: string } {
+  // Pull out the [ROMY_IMAGE_DRAFT:url] / [ROMY_IMAGE_CONFIRMED:url] marker
+  // so the user never sees it and we can render the image inline.
+  const markerRe = /\[ROMY_IMAGE_(?:DRAFT|CONFIRMED):([^\]]+)\]/
+  const match = content.match(markerRe)
+  let imageUrl = match ? match[1] : undefined
+  let text = content.replace(markerRe, '').trim()
+
+  // Also: strip the raw URL from the visible body if it appears in plain
+  // text (the reply currently contains both the URL inline and the marker).
+  // We keep the URL hidden because the image itself is shown above the text.
+  if (imageUrl) {
+    const urlEsc = imageUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    text = text.replace(new RegExp(`\\s*${urlEsc}\\s*`, 'g'), ' ').trim()
+  }
+
+  // Collapse double blank lines that may remain after stripping
+  text = text.replace(/\n{3,}/g, '\n\n').trim()
+  return { text, imageUrl }
+}
+
 function getSessionId(): string {
   const key = 'romy-web-session'
   const existing = window.localStorage.getItem(key)
@@ -389,7 +410,12 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
           className="chat-container flex-1 overflow-y-auto"
         >
           <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 sm:px-6">
-            {messages.map((message) => (
+            {messages.map((message) => {
+              const parsed =
+                message.role === 'assistant'
+                  ? parseAssistantMessage(message.content)
+                  : { text: message.content, imageUrl: undefined as string | undefined }
+              return (
               <div
                 key={message.id}
                 className={`message-fade-in flex ${
@@ -410,7 +436,16 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                       className="mb-2 max-h-48 w-auto rounded-lg"
                     />
                   )}
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  {parsed.imageUrl && (
+                    <a href={parsed.imageUrl} target="_blank" rel="noreferrer">
+                      <img
+                        src={parsed.imageUrl}
+                        alt="Generiertes Bild"
+                        className="mb-2 max-h-72 w-auto rounded-lg"
+                      />
+                    </a>
+                  )}
+                  <p className="whitespace-pre-wrap">{parsed.text}</p>
                   {message.siteUrl && (
                     <a
                       href={message.siteUrl}
@@ -423,7 +458,8 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
             {!userHasReplied && (
               <div className="message-fade-in flex flex-wrap gap-2 pt-1">
                 {ONBOARDING_QUICK_REPLIES.map((label) => (
