@@ -11,7 +11,7 @@ import { extractConfirmedImageUrls } from './romy-image-intent'
 const WORKSPACE = '/home/user/workspace'
 const CLAUDE_HOME = '/home/user/romy-claude'
 const ROMY_E2B_TEMPLATE = process.env.ROMY_E2B_TEMPLATE?.trim() || ''
-const AGENT_TIMEOUT_MS = 270_000
+const AGENT_TIMEOUT_MS = 285_000
 const NPM_INSTALL_TIMEOUT_MS = 90_000
 const AGENT_MAX_TURNS = 8
 const ALLOW_TEMPLATE_FALLBACK = process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
