@@ -383,10 +383,18 @@ async function runFastLinkFirstBuild(input: RomyCoderInput): Promise<RomyCoderRe
 }
 
 async function createRomySandbox(
-  opts: SandboxOpts & { apiKey: string }
+  opts: SandboxOpts & { apiKey: string },
+  mark?: (step: string, detail?: unknown) => void
 ): Promise<Sandbox> {
   if (ROMY_E2B_TEMPLATE) {
-    return Sandbox.create(ROMY_E2B_TEMPLATE, opts)
+    try {
+      return await Sandbox.create(ROMY_E2B_TEMPLATE, opts)
+    } catch (e) {
+      mark?.('template_failed_fallback_base', {
+        template: ROMY_E2B_TEMPLATE,
+        err: (e as Error).message,
+      })
+    }
   }
   return Sandbox.create(opts)
 }
@@ -648,7 +656,7 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
         timeoutMs: WARM_TIMEOUT_MS,
         envs: { [agentEnvVar]: credential },
         metadata: { slug, service: SERVICE_TAG },
-      })
+      }, mark)
       mark('sandbox_created', {
         id: sandbox.sandboxId,
         template: ROMY_E2B_TEMPLATE || 'base',
@@ -813,7 +821,7 @@ try {
 const stream = query({
   prompt: ${JSON.stringify(fullPrompt)},
   options: {
-    model: 'claude-sonnet-4-6',
+    model: ${JSON.stringify(isFirstBuild ? 'claude-haiku-4-5' : 'claude-sonnet-4-6')},
     maxTurns: ${AGENT_MAX_TURNS},
     permissionMode: 'bypassPermissions',
     cwd: ${JSON.stringify(WORKSPACE)},
