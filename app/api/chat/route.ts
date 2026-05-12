@@ -38,8 +38,6 @@ export const maxDuration = 300
 const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
 const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
 
-const ACK_FIRST_LINK =
-  'Ich schau jetzt auf deinen Link und baue daraus einen ersten Entwurf. Bleib bitte hier im Chat und schließe diese Seite nicht, sonst geht der Entwurf verloren. Feinheiten machen wir danach.'
 const ACK_FIRST_DIRECT =
   'Ich baue dir jetzt einen ersten Entwurf. Bleib bitte hier im Chat und schließe diese Seite nicht, sonst geht der Entwurf verloren. Feinheiten machen wir danach.'
 const ACK_FOLLOWUP =
@@ -52,21 +50,21 @@ const POST_FIRST_BUILD_AUTH_REPLY =
   'Wenn du mit diesem Entwurf weitermachen willst, lege bitte jetzt dein kostenloses Kundenkonto an. Dann bleiben dein Chatverlauf, deine Entwürfe und deine Website gespeichert.'
 
 const ONBOARDING_JA_REPLY =
-  'Super. Bitte schick mir einen Link zu deiner Website, deinem Social-Media-Profil oder deinem Google-Eintrag.'
-const ONBOARDING_NEIN_REPLY =
-  'Alles klar, dann fangen wir gemeinsam von vorne an. Erzähl mir bitte kurz etwas über dich: Was für ein Unternehmen hast du und wie heißt es? Welche Inhalte soll deine Website enthalten (z.B. Angebot, Leistungen, Öffnungszeiten, Kontakt)? Und in welchem Stil hättest du sie gerne (modern, klassisch, verspielt oder minimal)?'
-const STYLE_AFTER_LINK_REPLY =
-  'Danke. Verrat mir bitte noch kurz die Stilrichtung: eher minimalistisch, modern, editorial, warm/klassisch oder den Stil der aktuellen Seite beibehalten?'
-const LAYOUT_CHOICE_REPLY =
   [
-    'Danke. Bevor ich baue, wähle bitte kurz eine Layout-Richtung:',
+    'Alles klar, dann legen wir los. Erzähl mir kurz und knapp über dich und dein Unternehmen:',
     '',
-    '1. Ruhig & vertrauensvoll, großes Hundebild, viel Weißraum, warm und seriös.',
-    '2. Editorial & hochwertig, stärker wie ein kleines Magazin, mit großen Typo-Flächen.',
-    '3. Freundlich & nahbar, etwas persönlicher, mit klaren Angebotskarten.',
+    '· Was machst du?',
+    '· Wie heißt deine Firma?',
+    '· Wo bist du?',
     '',
-    'Schreib einfach 1, 2 oder 3.',
+    'Erstmal nur Infos zum Unternehmen, keine Bilder schicken. Im nächsten Schritt frag ich nach dem Design.',
   ].join('\n')
+const ONBOARDING_NEIN_REPLY =
+  'Alles klar, melde dich einfach wenn du soweit bist.'
+const DESIGN_QUESTION_REPLY =
+  'Super. Jetzt noch grob zum Look: Wie soll die Seite wirken? Eher modern, klassisch, verspielt oder minimal? Beschreib es einfach in eigenen Worten.'
+const POST_BUILD_IMAGE_QUESTION =
+  'Möchtest du zusammen mit mir Bilder generieren oder hast du bereits eigene? Schick sie mir einfach rein.'
 
 const PUBLISH_MISSING_DRAFT_REPLY =
   'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
@@ -97,17 +95,13 @@ function cleanSessionId(input: unknown): string {
 
 function fallbackReply(text: string): string {
   const lower = text.toLowerCase()
-  const hasUrl = /https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(text)
-  if (hasUrl) {
-    return 'Danke, schick mir gern kurz dazu: Soll die neue Seite ganz anders wirken, oder soll ich den Stil deiner aktuellen Website behalten und nur moderner machen?'
-  }
   if (/(preis|kost|beta|abo|monat)/.test(lower)) {
     return 'Romy ist gerade noch in der Beta. Du kannst kostenlos starten und mir erstmal erzählen, was deine Website können soll.'
   }
   if (/(hallo|hi|hey|guten)/.test(lower)) {
-    return 'Hi, ich bin Romy. Hast du schon eine Website? Wenn ja, schick mir kurz den Link. Wenn nicht, erzähl mir einfach, was du machst und wie deine neue Website wirken soll.'
+    return 'Hey, ich bin Romy. Erzähl mir kurz was du machst, wie deine Firma heißt und wo du bist, dann legen wir los.'
   }
-  return 'Alles klar. Erzähl mir kurz: Was bietest du an, wie heißt dein Geschäft und wie soll deine Website wirken (eher modern, ruhig, hochwertig oder etwas ganz anderes)?'
+  return 'Alles klar. Erzähl mir kurz: Was machst du, wie heißt deine Firma und wo bist du?'
 }
 
 function heuristicBuildIntent(
@@ -115,54 +109,30 @@ function heuristicBuildIntent(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): boolean {
   const lower = text.toLowerCase()
-  if (hasLink(text) && previousAssistantAskedForOneLink(history)) return false
-  if (previousAssistantAskedForStyleDirection(history)) return false
-  if (previousAssistantAskedForLayoutChoice(history)) return true
+  if (previousAssistantAskedForDesign(history)) return true
   return /\b(bau|baue|bauen|erstell|erstelle|machen|mach|änder|ändere|aendere|update|aktualisier|aktualisiere|füg|fueg|hinzu|lösch|loesch|entfern|design|farbe|schrift|öffnungszeit|oeffnungszeit|adresse|kontakt|preis|leistung|seite|website|webseite|homepage)\b/i.test(lower)
-}
-
-function hasLink(text: string): boolean {
-  return /https?:\/\/|www\.|(?:airbnb|instagram|facebook|google|maps)\.[a-z]{2,}|[a-z0-9-]+\.[a-z]{2,}/i.test(text)
 }
 
 function wantsPublish(text: string): boolean {
   return /\b(veroeffentlichen|veröffentlichen|live schalten|online stellen|freigeben|seite live|go live)\b/i.test(text)
 }
 
-function previousAssistantAskedForStyleDirection(
+function previousAssistantAskedForBusinessInfo(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): boolean {
   const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
   if (!lastAssistant) return false
-  const text = lastAssistant.content.toLowerCase()
-  return text.includes('verrat mir bitte noch kurz die stilrichtung')
+  return lastAssistant.content.includes('Erstmal nur Infos zum Unternehmen')
 }
 
-function previousAssistantAskedForLayoutChoice(
+function previousAssistantAskedForDesign(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): boolean {
   const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
   if (!lastAssistant) return false
-  const text = lastAssistant.content.toLowerCase()
-  return text.includes('wähle bitte kurz eine layout-richtung') || text.includes('schreib einfach 1, 2 oder 3')
+  return lastAssistant.content.includes('Jetzt noch grob zum Look')
 }
 
-function previousAssistantAskedForOneLink(
-  history: Array<{ role: 'user' | 'assistant'; content: string }>
-): boolean {
-  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
-  if (!lastAssistant) return false
-  const text = lastAssistant.content.toLowerCase()
-  return (
-    text.includes('bitte schick romy einen link') ||
-    text.includes('schick mir bitte den link') ||
-    text.includes('einen link zu deiner website')
-  )
-}
-
-function historyContainsLink(history: Array<{ role: 'user' | 'assistant'; content: string }>): boolean {
-  return history.slice(-8).some((m) => m.role === 'user' && hasLink(m.content))
-}
 
 type StreamEvent =
   | { type: 'reply'; text: string; intent: 'chat' | 'limit'; degraded?: boolean }
@@ -218,7 +188,9 @@ export async function POST(req: NextRequest) {
   }
 
   const sessionId = cleanSessionId(body.sessionId)
-  const text = typeof body.message === 'string' ? body.message.trim() : ''
+  const rawText = typeof body.message === 'string' ? body.message.trim() : ''
+  // Schutz gegen extrem lange User-Inputs, die den Agent in Timeout treiben können.
+  const text = rawText.length > 3000 ? rawText.slice(0, 3000) : rawText
   const isOnboarding = body.isOnboarding === true
   const imageDataUrl =
     typeof body.imageDataUrl === 'string' && body.imageDataUrl.startsWith('data:')
@@ -323,30 +295,28 @@ export async function POST(req: NextRequest) {
       return
     }
 
-    if (hasLink(text) && previousAssistantAskedForOneLink(history)) {
-      await appendTurn(sessionKey, text, STYLE_AFTER_LINK_REPLY).catch(() => {})
-      await emit({ type: 'reply', text: STYLE_AFTER_LINK_REPLY, intent: 'chat' })
-      return
-    }
-
-    if (previousAssistantAskedForStyleDirection(history)) {
-      await appendTurn(sessionKey, text, LAYOUT_CHOICE_REPLY).catch(() => {})
-      await emit({ type: 'reply', text: LAYOUT_CHOICE_REPLY, intent: 'chat' })
+    if (previousAssistantAskedForBusinessInfo(history)) {
+      await appendTurn(sessionKey, text, DESIGN_QUESTION_REPLY).catch(() => {})
+      await emit({ type: 'reply', text: DESIGN_QUESTION_REPLY, intent: 'chat' })
       return
     }
 
     let routed: Awaited<ReturnType<typeof routeMessage>>
-    try {
-      routed = await routeMessage(history, text, !!imageDataUrl)
-    } catch (err) {
-      console.error('routeMessage failed:', err)
-      if (heuristicBuildIntent(text, history)) {
-        routed = { intent: 'build', classify_ms: 0 }
-      } else {
-      const reply = fallbackReply(text)
-      await appendTurn(sessionKey, text, reply).catch(() => {})
-      await emit({ type: 'reply', text: reply, intent: 'chat', degraded: true })
-      return
+    if (previousAssistantAskedForDesign(history)) {
+      routed = { intent: 'build', classify_ms: 0 }
+    } else {
+      try {
+        routed = await routeMessage(history, text, !!imageDataUrl)
+      } catch (err) {
+        console.error('routeMessage failed:', err)
+        if (heuristicBuildIntent(text, history)) {
+          routed = { intent: 'build', classify_ms: 0 }
+        } else {
+          const reply = fallbackReply(text)
+          await appendTurn(sessionKey, text, reply).catch(() => {})
+          await emit({ type: 'reply', text: reply, intent: 'chat', degraded: true })
+          return
+        }
       }
     }
 
@@ -378,9 +348,7 @@ export async function POST(req: NextRequest) {
     }
 
     const isFirstBuild = !site.last_sandbox_id
-    const ack = isFirstBuild
-      ? (hasLink(text) || historyContainsLink(history) ? ACK_FIRST_LINK : ACK_FIRST_DIRECT)
-      : ACK_FOLLOWUP
+    const ack = isFirstBuild ? ACK_FIRST_DIRECT : ACK_FOLLOWUP
     await emit({ type: 'ack', text: ack })
 
     const buildStart = Date.now()
@@ -458,8 +426,10 @@ export async function POST(req: NextRequest) {
       const publishHint = isFirstBuild
         ? 'Das ist erstmal nur dein Entwurf. Wenn du zufrieden bist, schreib: veröffentlichen. Dann schalte ich die Seite live.'
         : ''
+      const imageFollowUp = isFirstBuild ? POST_BUILD_IMAGE_QUESTION : ''
       const reply = [
         `${bodyText}\n\n${coderResult.site_url}`,
+        imageFollowUp,
         publishHint,
         shouldPromptForAccount ? POST_FIRST_BUILD_AUTH_REPLY : '',
       ]

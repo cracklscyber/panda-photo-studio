@@ -105,39 +105,6 @@ function formatHistory(history: HistoryMsg[], maxTurns = 8): HistoryMsg[] {
   return history.slice(-maxTurns).filter((m) => m.content && m.content.trim().length > 0)
 }
 
-function hasLink(text: string): boolean {
-  return /https?:\/\/|www\.|(?:airbnb|instagram|facebook|google|maps)\.[a-z]{2,}|[a-z0-9-]+\.[a-z]{2,}/i.test(text)
-}
-
-function previousAssistantAskedForLinks(history: HistoryMsg[]): boolean {
-  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
-  if (!lastAssistant) return false
-  const text = lastAssistant.content.toLowerCase()
-  return (
-    text.includes('schick romy die links') ||
-    text.includes('bitte schick romy einen link') ||
-    text.includes('schick mir bitte den link') ||
-    text.includes('schick mir bitte die links') ||
-    (text.includes('website') && text.includes('social') && text.includes('google'))
-  )
-}
-
-function previousAssistantAskedForStyleDirection(history: HistoryMsg[]): boolean {
-  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
-  if (!lastAssistant) return false
-  const text = lastAssistant.content.toLowerCase()
-  return (
-    text.includes('verrat mir bitte noch kurz die stilrichtung') ||
-    (text.includes('minimalistisch') && text.includes('modern') && text.includes('editorial'))
-  )
-}
-
-function previousAssistantAskedForLayoutChoice(history: HistoryMsg[]): boolean {
-  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
-  if (!lastAssistant) return false
-  const text = lastAssistant.content.toLowerCase()
-  return text.includes('wähle bitte kurz eine layout-richtung') || text.includes('schreib einfach 1, 2 oder 3')
-}
 
 export async function classifyIntent(
   history: HistoryMsg[],
@@ -215,28 +182,6 @@ export async function routeMessage(
   userMessage: string,
   hasImage: boolean
 ): Promise<RouterResult> {
-  if (hasLink(userMessage) && previousAssistantAskedForLinks(history)) {
-    return {
-      intent: 'chat',
-      classify_ms: 0,
-      chat_reply:
-        'Danke. Verrat mir bitte noch kurz die Stilrichtung: eher minimalistisch, modern, editorial, warm/klassisch oder den Stil der aktuellen Seite beibehalten?',
-    }
-  }
-  if (previousAssistantAskedForStyleDirection(history)) {
-    return {
-      intent: 'chat',
-      classify_ms: 0,
-      chat_reply: 'Danke. Wähle bitte noch kurz eine Layout-Richtung: 1, 2 oder 3.',
-    }
-  }
-  if (previousAssistantAskedForLayoutChoice(history)) {
-    return {
-      intent: 'build',
-      classify_ms: 0,
-    }
-  }
-
   const cls = await classifyIntent(history, userMessage, hasImage)
   if (cls.intent === 'chat') {
     const chat = await generateChatReply(history, userMessage, hasImage)

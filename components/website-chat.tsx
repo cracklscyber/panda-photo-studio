@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AuthModal } from './auth-modal'
-import { AccountMenu } from './account-menu'
 
 declare global {
   interface Window {
@@ -25,7 +24,7 @@ const INITIAL_MESSAGE: Message = {
   id: 'romy-hello',
   role: 'assistant',
   content:
-    'Hi, ich bin Romy — deine persönliche Website-Assistentin. Wir starten mit einem groben Layout, danach machen wir die Feinheiten zusammen. Dafür brauche ich kurz ein paar Infos von dir: Was machst du, wie heißt dein Geschäft, wo bist du, und in welchem Stil hättest du es gerne (modern, klassisch, verspielt, minimal)?',
+    'Hey, ich bin Romy, deine persönliche Website-Assistentin. Zusammen bauen wir gemeinsam deine Seite. Wir fangen an mit einem groben Layout. Möchtest du starten?',
 }
 
 const ONBOARDING_QUICK_REPLIES = ['Ja', 'Nein']
@@ -372,25 +371,26 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
       aria-label="Chat mit Romy"
     >
       <div className="flex h-full flex-col">
-        <div className="border-b border-neutral-200 bg-white/80 backdrop-blur px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+        <div className="border-b border-neutral-200 bg-white/80 backdrop-blur px-3 py-3 sm:px-6 sm:py-4">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 sm:gap-4">
             <button
               type="button"
               onClick={closeChat}
-              className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 hover:text-neutral-950"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-2 text-xs font-medium text-neutral-700 transition hover:border-neutral-900 hover:text-neutral-950 sm:gap-2 sm:px-3 sm:text-sm"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M19 12H5" />
                 <path d="m12 19-7-7 7-7" />
               </svg>
-              Zurück zur Startseite
+              <span className="hidden sm:inline">Zurück zur Startseite</span>
+              <span className="sm:hidden">Zurück</span>
             </button>
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <div className="text-right">
-                <p className="text-sm font-semibold text-neutral-900">Romy</p>
-                <p className="text-xs text-neutral-500">Website-Assistentin</p>
+                <p className="text-sm font-semibold text-neutral-900 leading-tight">Romy</p>
+                <p className="hidden text-xs text-neutral-500 sm:block">Website-Assistentin</p>
               </div>
-              <span className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]">
+              <span className="relative inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] sm:h-11 sm:w-11">
                 <Image
                   src="/romy-logo.png"
                   alt="Romy"
@@ -400,7 +400,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                 />
               </span>
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-label="Online" />
-              <AccountMenu variant="light" />
             </div>
           </div>
         </div>
