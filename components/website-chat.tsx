@@ -16,6 +16,8 @@ type Message = {
   content: string
   siteUrl?: string
   imageDataUrl?: string
+  paymentUrl?: string
+  bookingUrl?: string
 }
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
@@ -251,14 +253,19 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
     setPendingImage(null)
     setIsSending(true)
 
-    function appendAssistant(content: string, siteUrl?: string) {
+    function appendAssistant(
+      content: string,
+      extras: { siteUrl?: string; paymentUrl?: string; bookingUrl?: string } = {}
+    ) {
       setMessages((current) => [
         ...current,
         {
           id: `romy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           role: 'assistant',
           content,
-          siteUrl,
+          siteUrl: extras.siteUrl,
+          paymentUrl: extras.paymentUrl,
+          bookingUrl: extras.bookingUrl,
         },
       ])
     }
@@ -301,6 +308,8 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
             type: string
             text?: string
             siteUrl?: string
+            paymentUrl?: string
+            bookingUrl?: string
           } | null = null
           try {
             event = JSON.parse(line)
@@ -314,11 +323,14 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
             waitingOnBuild = true
             setIsBuilding(true)
           } else if (event.type === 'reply' && event.text) {
-            appendAssistant(event.text)
+            appendAssistant(event.text, {
+              paymentUrl: event.paymentUrl,
+              bookingUrl: event.bookingUrl,
+            })
             waitingOnBuild = false
             setIsBuilding(false)
           } else if (event.type === 'final' && event.text) {
-            appendAssistant(event.text, event.siteUrl)
+            appendAssistant(event.text, { siteUrl: event.siteUrl })
             waitingOnBuild = false
             setIsBuilding(false)
           } else if (event.type === 'error' && event.text) {
@@ -454,6 +466,30 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                     >
                       {message.siteUrl.includes('/site/') ? 'Entwurf ansehen' : 'Website ansehen'}
                     </a>
+                  )}
+                  {(message.paymentUrl || message.bookingUrl) && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {message.paymentUrl && (
+                        <a
+                          href={message.paymentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-700"
+                        >
+                          Mitgliedschaft starten
+                        </a>
+                      )}
+                      {message.bookingUrl && (
+                        <a
+                          href={message.bookingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-medium text-neutral-800 transition hover:border-neutral-900 hover:text-neutral-950"
+                        >
+                          Termin vereinbaren
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

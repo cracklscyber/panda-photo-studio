@@ -76,16 +76,20 @@ function detectOnboardingAnswer(text: string): 'ja' | 'nein' | null {
   return null
 }
 
-function buildLimitMessage(sessionKey: string): string {
-  const stripeWithRef = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(sessionKey)}`
-  return [
-    'Du hast deine kostenlosen Änderungen aufgebraucht. Deine Seite bleibt natürlich erhalten.',
+function buildLimitMessage(sessionKey: string): {
+  text: string
+  paymentUrl: string
+  bookingUrl: string
+} {
+  const paymentUrl = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(sessionKey)}`
+  const text = [
+    'Wir haben jetzt schon einiges zusammen gebaut. Deine Seite bleibt erhalten.',
     '',
-    'Wenn ich weiter für dich bauen und Änderungen live setzen soll, aktiviere Romy für 29€/Monat. Das ist jederzeit kündbar.',
+    'Wenn du weiter mit mir Änderungen vornehmen möchtest, schließ einfach deine Mitgliedschaft ab. 29 € im Monat, jederzeit kündbar.',
     '',
-    `Direkt aktivieren: ${stripeWithRef}`,
-    `Oder kurz kostenlos sprechen: ${CAL_BOOKING_URL}`,
+    'Lieber vorher kurz sprechen? Wir können auch einen kostenlosen Termin vereinbaren.',
   ].join('\n')
+  return { text, paymentUrl, bookingUrl: CAL_BOOKING_URL }
 }
 
 function cleanSessionId(input: unknown): string {
@@ -135,7 +139,14 @@ function previousAssistantAskedForDesign(
 
 
 type StreamEvent =
-  | { type: 'reply'; text: string; intent: 'chat' | 'limit'; degraded?: boolean }
+  | {
+      type: 'reply'
+      text: string
+      intent: 'chat' | 'limit'
+      degraded?: boolean
+      paymentUrl?: string
+      bookingUrl?: string
+    }
   | { type: 'ack'; text: string }
   | { type: 'final'; text: string; siteUrl?: string; intent: 'build' }
   | { type: 'error'; text: string; error?: string }
@@ -336,14 +347,20 @@ export async function POST(req: NextRequest) {
     const site = await getOrCreateSite(sessionKey, buildContext)
 
     if ((site.builds_used ?? 0) >= FREE_BUILD_LIMIT && !site.paid) {
-      const reply = buildLimitMessage(sessionKey)
+      const limit = buildLimitMessage(sessionKey)
       if (!site.callback_requested_at) {
         await markCallbackRequested(sessionKey).catch((err) =>
           console.error('markCallbackRequested failed:', err)
         )
       }
-      await appendTurn(sessionKey, text, reply).catch(() => {})
-      await emit({ type: 'reply', text: reply, intent: 'limit' })
+      await appendTurn(sessionKey, text, limit.text).catch(() => {})
+      await emit({
+        type: 'reply',
+        text: limit.text,
+        intent: 'limit',
+        paymentUrl: limit.paymentUrl,
+        bookingUrl: limit.bookingUrl,
+      })
       return
     }
 
