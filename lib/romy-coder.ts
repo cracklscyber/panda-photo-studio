@@ -824,7 +824,7 @@ try {
 const stream = query({
   prompt: ${JSON.stringify(fullPrompt)},
   options: {
-    model: ${JSON.stringify(isFirstBuild ? 'claude-haiku-4-5' : 'claude-sonnet-4-6')},
+    model: ${JSON.stringify('claude-sonnet-4-6')},
     maxTurns: ${AGENT_MAX_TURNS},
     permissionMode: 'bypassPermissions',
     cwd: ${JSON.stringify(WORKSPACE)},
