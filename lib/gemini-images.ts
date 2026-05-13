@@ -60,10 +60,11 @@ export async function generateImage(opts: {
 export async function generateImagesForBranche(opts: {
   slug: string
   branche: string
+  wish?: string
   count?: number
 }): Promise<GeneratedImage[]> {
   const count = Math.min(Math.max(opts.count || 3, 1), 5)
-  const prompts = imagePromptsForBranche(opts.branche, count)
+  const prompts = imagePromptsForBranche(opts.branche, count, opts.wish)
   const results: GeneratedImage[] = []
   for (let i = 0; i < prompts.length; i++) {
     try {
@@ -81,9 +82,10 @@ export async function generateImagesForBranche(opts: {
   return results
 }
 
-function imagePromptsForBranche(branche: string, count: number): string[] {
+function imagePromptsForBranche(branche: string, count: number, wish?: string): string[] {
   const lower = branche.toLowerCase()
   const matchAny = (...keywords: string[]) => keywords.some((k) => lower.includes(k))
+  const wishClean = (wish || '').trim().slice(0, 400)
 
   let base: string
   if (matchAny('bäckerei', 'baeckerei', 'bäcker', 'baecker', 'konditor')) {
@@ -128,12 +130,16 @@ function imagePromptsForBranche(branche: string, count: number): string[] {
     base = 'A welcoming professional small-business interior, natural daylight, modern minimalist branding, warm tones, photo-realistic'
   }
 
+  // When the customer described a concrete wish (mood, motifs, palette),
+  // prepend it to the prompt so Imagen actually reflects what they asked for.
+  const withWish = (p: string) => (wishClean ? `${wishClean}. ${p}` : p)
+
   const variations = [
-    `${base}, hero shot, wide composition`,
-    `${base}, detail shot, close framing`,
-    `${base}, ambiance shot, soft focus`,
-    `${base}, people working naturally, candid`,
-    `${base}, product close-up, careful styling`,
+    withWish(`${base}, hero shot, wide composition`),
+    withWish(`${base}, detail shot, close framing`),
+    withWish(`${base}, ambiance shot, soft focus`),
+    withWish(`${base}, people working naturally, candid`),
+    withWish(`${base}, product close-up, careful styling`),
   ]
   return variations.slice(0, count)
 }

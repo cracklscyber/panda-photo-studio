@@ -176,6 +176,18 @@ function previousAssistantAskedToBuildAfterImages(
   return last.content.includes('Damit kann ich loslegen. Soll ich jetzt deine Seite bauen?')
 }
 
+function previousAssistantAskedWhatToChange(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const last = lastAssistant(history)
+  if (!last) return false
+  return last.content.includes('Was soll ich noch ändern oder ergänzen')
+}
+
+function mentionsImages(text: string): boolean {
+  return /\b(bild|bilder|foto|fotos|grafik|illustration|hero|aufnahme|aufnahmen|moodboard|langweilig|tristes?|öde|hässlich|schöner|besser|anders|neue?|andere?)\b/i.test(text)
+}
+
 function extractBusinessDescription(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): string {
@@ -229,15 +241,12 @@ async function runImageGenerationStep(opts: {
     return
   }
 
-  const branchePrompt = extraPromptHint
-    ? `${branche} | Wunsch: ${extraPromptHint}`
-    : branche
-
   let images: Awaited<ReturnType<typeof generateImagesForBranche>> = []
   try {
     images = await generateImagesForBranche({
       slug: site.slug,
-      branche: branchePrompt,
+      branche,
+      wish: extraPromptHint || undefined,
       count: 3,
     })
   } catch (err) {
@@ -477,6 +486,18 @@ export async function POST(req: NextRequest) {
         emit,
       })
       return
+    }
+
+    // After "Kein Problem. Was soll ich noch ändern oder ergänzen?",
+    // detect if the customer is complaining about images and redirect to the wish prompt
+    // so the next message triggers a fresh image generation round.
+    if (previousAssistantAskedWhatToChange(history)) {
+      if (mentionsImages(text)) {
+        await appendTurn(sessionKey, loggedUserMessage, WISH_PROMPT).catch(() => {})
+        await emit({ type: 'reply', text: WISH_PROMPT, intent: 'chat' })
+        return
+      }
+      // Non-image modification → treat as additional build instructions
     }
 
     // After images shown, Romy asked "Soll ich jetzt deine Seite bauen?"
