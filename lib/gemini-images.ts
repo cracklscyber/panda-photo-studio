@@ -83,22 +83,50 @@ export async function generateImagesForBranche(opts: {
 
 function imagePromptsForBranche(branche: string, count: number): string[] {
   const lower = branche.toLowerCase()
-  const base =
-    lower.includes('cafe') || lower.includes('café') || lower.includes('coffee') || lower.includes('bäckerei')
-      ? 'A warm, inviting specialty coffee shop interior, natural daylight, wooden counter, soft minimalist atmosphere, photo-realistic'
-      : lower.includes('friseur') || lower.includes('barber') || lower.includes('salon')
-        ? 'A modern minimalist hair salon interior, warm wood, soft natural lighting, elegant atmosphere'
-        : lower.includes('blume') || lower.includes('florist')
-          ? 'A bright florist studio with handmade bouquets, soft pastel light, natural blooms, refined minimalist style'
-          : lower.includes('restaurant') || lower.includes('bistro')
-            ? 'A cosy modern restaurant interior, dim warm lights, set tables, refined hospitality atmosphere'
-            : lower.includes('handwerk') || lower.includes('werkstatt')
-              ? 'A traditional craftsman workshop, focused hands working with quality tools, warm natural light, authentic atmosphere'
-              : lower.includes('kosmetik') || lower.includes('nagel') || lower.includes('beauty')
-                ? 'A serene minimalist beauty studio, soft pink and beige tones, elegant minimalist setup, gentle daylight'
-                : lower.includes('fitness') || lower.includes('yoga') || lower.includes('wellness')
-                  ? 'A bright airy yoga studio with wooden floor, warm sunlight, plants, calm minimalist atmosphere'
-                  : 'A welcoming professional small-business interior, natural daylight, modern minimalist branding, warm tones'
+  const matchAny = (...keywords: string[]) => keywords.some((k) => lower.includes(k))
+
+  let base: string
+  if (matchAny('bäckerei', 'baeckerei', 'bäcker', 'baecker', 'konditor')) {
+    base = 'A warm artisan bakery interior, fresh bread loaves and pastries on a wooden counter, natural daylight, flour-dusted surfaces, authentic German Handwerksbäckerei atmosphere, photo-realistic'
+  } else if (matchAny('cafe', 'café', 'coffee', 'kaffee', 'rösterei', 'roesterei')) {
+    base = 'A warm, inviting specialty coffee shop interior, natural daylight, wooden counter, soft minimalist atmosphere, photo-realistic'
+  } else if (matchAny('friseur', 'frisör', 'barber', 'salon', 'hair')) {
+    base = 'A modern minimalist hair salon interior, warm wood, soft natural lighting, elegant atmosphere'
+  } else if (matchAny('blume', 'florist', 'blumenladen', 'blumenstrauß')) {
+    base = 'A bright florist studio with handmade bouquets, soft pastel light, natural blooms, refined minimalist style'
+  } else if (matchAny('restaurant', 'bistro', 'gaststätte', 'gaststaette', 'wirtshaus')) {
+    base = 'A cosy modern restaurant interior, dim warm lights, set tables, refined hospitality atmosphere'
+  } else if (matchAny('elektriker', 'elektro', 'elektroinstallateur', 'elektrotechnik')) {
+    base = 'A focused electrician at work in a modern German residential setting, installing or checking an electrical panel and wiring, clean tools, safety helmet, natural light, authentic and trustworthy craftsmanship, photo-realistic'
+  } else if (matchAny('klempner', 'sanitär', 'sanitaer', 'heizung', 'installateur')) {
+    base = 'A skilled plumber at work, installing or repairing piping under a sink, clean tools, blue work clothes, modern German bathroom or kitchen, authentic and trustworthy craftsmanship, photo-realistic'
+  } else if (matchAny('schreiner', 'tischler', 'schreinerei', 'tischlerei')) {
+    base = 'A carpentry workshop, hands working on a wooden piece, planing or chiseling, wood shavings, warm natural light, traditional German craftsmanship, photo-realistic'
+  } else if (matchAny('maler', 'malermeister', 'malerbetrieb', 'lackierer')) {
+    base = 'A professional painter at work in a residential room, applying paint with a roller on a white wall, drop cloth, ladder, clean overalls, natural daylight, German Malerbetrieb craftsmanship, photo-realistic'
+  } else if (matchAny('dachdecker', 'spengler')) {
+    base = 'A roofer at work on a German residential roof, installing tiles or zinc gutter, safety harness, blue sky, authentic Handwerk, photo-realistic'
+  } else if (matchAny('kfz', 'mechatron', 'mechaniker', 'autowerkstatt', 'autohaus', 'kfz-werkstatt')) {
+    base = 'A modern car repair garage interior, a vehicle on a lift, mechanic working with diagnostic tools, clean industrial space, photo-realistic'
+  } else if (matchAny('hundeschule', 'hundetraining', 'tier', 'tierarzt', 'tierpraxis')) {
+    base = 'A bright outdoor dog training scene, a happy dog with a focused trainer, golden hour light, natural park setting, authentic and joyful atmosphere, photo-realistic'
+  } else if (matchAny('handwerk', 'werkstatt', 'meisterbetrieb', 'gewerk')) {
+    base = 'A traditional German craftsman workshop, focused hands working with quality tools, warm natural light, authentic and trustworthy atmosphere, photo-realistic'
+  } else if (matchAny('kosmetik', 'nagel', 'beauty', 'nail', 'wimpern')) {
+    base = 'A serene minimalist beauty studio, soft pink and beige tones, elegant minimalist setup, gentle daylight'
+  } else if (matchAny('fitness', 'yoga', 'wellness', 'pilates', 'gym', 'studio')) {
+    base = 'A bright airy yoga studio with wooden floor, warm sunlight, plants, calm minimalist atmosphere'
+  } else if (matchAny('praxis', 'arzt', 'ärztin', 'aerztin', 'physio', 'heilpraktiker', 'therapie')) {
+    base = 'A clean modern medical practice waiting room, soft natural light, plants, calming neutral tones, trustworthy atmosphere, photo-realistic'
+  } else if (matchAny('kanzlei', 'anwalt', 'rechtsanwalt', 'notar', 'steuerberater')) {
+    base = 'A refined modern law-office or consultancy interior, oak desk, leather chair, soft daylight, books, trustworthy and professional atmosphere, photo-realistic'
+  } else if (matchAny('fahrschule', 'fahrlehrer')) {
+    base = 'A modern driving-school car interior on a sunny German road, dashboard view, calm and reassuring atmosphere, photo-realistic'
+  } else if (matchAny('it', 'software', 'agentur', 'webdesign', 'marketing')) {
+    base = 'A modern creative agency office, large monitors, warm wood, plants, focused team at work, soft daylight, photo-realistic'
+  } else {
+    base = 'A welcoming professional small-business interior, natural daylight, modern minimalist branding, warm tones, photo-realistic'
+  }
 
   const variations = [
     `${base}, hero shot, wide composition`,
