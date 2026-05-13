@@ -20,7 +20,6 @@ interface ConvoRow {
   phone: string
   messages: ChatMessage[] | unknown
   updated_at: string
-  created_at: string | null
 }
 
 interface SiteRow {
@@ -141,7 +140,7 @@ export default async function AdminPage({
   const [convosRes, sitesRes, buildsRes, customersRes] = await Promise.all([
     sb
       .from('romy_conversations')
-      .select('phone, messages, updated_at, created_at')
+      .select('phone, messages, updated_at')
       .order('updated_at', { ascending: false })
       .limit(200),
     sb
@@ -172,15 +171,12 @@ export default async function AdminPage({
     costByPhone.set(b.phone, cur)
   }
 
-  // Stable anonymous numbering: order all phones by oldest activity first
-  // (created_at, falling back to updated_at) so the same session always gets
-  // the same User N across reloads.
   const anonymousNumberByPhone = new Map<string, number>()
   const numberingOrder = convos
     .filter((c) => c.phone && c.phone !== '__hook__')
     .map((c) => ({
       phone: c.phone,
-      seenAt: c.created_at || c.updated_at,
+      seenAt: c.updated_at,
     }))
     .sort(
       (a, b) => new Date(a.seenAt).getTime() - new Date(b.seenAt).getTime()

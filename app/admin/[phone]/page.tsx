@@ -129,7 +129,7 @@ export default async function ConvoPage({
       sb.from('romy_customers').select('*').eq('session_id', phone).maybeSingle(),
       sb
         .from('romy_conversations')
-        .select('phone, created_at, updated_at')
+        .select('phone, updated_at')
         .order('updated_at', { ascending: false })
         .limit(500),
       sb.from('romy_customers').select('session_id, name, email'),
@@ -148,7 +148,6 @@ export default async function ConvoPage({
   const allConvos =
     (allConvosRes.data as Array<{
       phone: string
-      created_at: string | null
       updated_at: string
     }> | null) || []
   const allCustomers =
@@ -162,8 +161,7 @@ export default async function ConvoPage({
   let counter = 0
   const ordered = [...allConvos].sort(
     (a, b) =>
-      new Date(a.created_at || a.updated_at).getTime() -
-      new Date(b.created_at || b.updated_at).getTime()
+      new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
   )
   for (const c of ordered) {
     if (!c.phone || c.phone === '__hook__') continue
