@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
-import { ensureVercelSubdomain } from '@/lib/vercel-domains'
 import {
   getOrCreateSite,
   updateSiteSandboxId,
@@ -11,7 +10,12 @@ import {
   publishSite,
   FREE_BUILD_LIMIT,
 } from '@/lib/romy-sites'
-import { sitePublicUrl, sitePreviewUrl, uploadUserChatImage } from '@/lib/supabase-storage'
+import {
+  downloadSiteFile,
+  sitePublicUrl,
+  sitePreviewUrl,
+  uploadUserChatImage,
+} from '@/lib/supabase-storage'
 import { loadHistory, appendTurn, appendAssistantOnly, resetHistory } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 import { generateImagesForBranche } from '@/lib/gemini-images'
@@ -66,7 +70,7 @@ const POST_IMAGES_FAILED =
 const POST_BUILD_IMAGE_QUESTION =
   'Möchtest du zusammen mit mir Bilder generieren oder hast du bereits eigene? Schick sie mir einfach rein.'
 
-const QUICK_REPLIES_JA_NEIN = '[ROMY_QUICK_REPLIES:Ja,Nein]'
+const QUICK_REPLIES_JA_NEIN = ['Ja', 'Nein']
 
 const PUBLISH_MISSING_DRAFT_REPLY =
   'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
@@ -211,6 +215,7 @@ type StreamEvent =
       degraded?: boolean
       paymentUrl?: string
       bookingUrl?: string
+      quickReplies?: string[]
     }
   | { type: 'ack'; text: string }
   | { type: 'final'; text: string; siteUrl?: string; intent: 'build' }
@@ -270,8 +275,8 @@ async function runImageGenerationStep(opts: {
   }
 
   // Final question: should I build now?
-  const buildAsk = `${POST_IMAGES_BUILD_QUESTION}\n\n${QUICK_REPLIES_JA_NEIN}`
-  await emit({ type: 'reply', text: buildAsk, intent: 'chat' })
+  const buildAsk = POST_IMAGES_BUILD_QUESTION
+  await emit({ type: 'reply', text: buildAsk, intent: 'chat', quickReplies: QUICK_REPLIES_JA_NEIN })
   await appendAssistantOnly(sessionKey, buildAsk).catch(() => {})
 }
 
@@ -448,10 +453,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Q2 just answered → Q3 (image-intro + wish question with Ja/Nein quick-replies)
-    if (previousAssistantAskedForBusinessInfo(history)) {
-      const reply = `${IMAGE_INTRO_QUESTION}\n\n${QUICK_REPLIES_JA_NEIN}`
+      if (previousAssistantAskedForBusinessInfo(history)) {
+      const reply = IMAGE_INTRO_QUESTION
       await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
-      await emit({ type: 'reply', text: reply, intent: 'chat' })
+      await emit({ type: 'reply', text: reply, intent: 'chat', quickReplies: QUICK_REPLIES_JA_NEIN })
       return
     }
 
@@ -463,13 +468,13 @@ export async function POST(req: NextRequest) {
         await emit({ type: 'reply', text: WISH_PROMPT, intent: 'chat' })
         return
       }
-      // Nein, or free text → generate images right away from the business description
+      // Nein → generate from business description. Free text here is a concrete wish.
       const branche = extractBusinessDescription(history) || text
       await runImageGenerationStep({
         sessionKey,
         loggedUserMessage,
         branche,
-        extraPromptHint: '',
+        extraPromptHint: onbAnswer === 'nein' ? '' : text,
         emit,
       })
       return
@@ -511,6 +516,16 @@ export async function POST(req: NextRequest) {
           'Kein Problem. Was soll ich noch ändern oder ergänzen, bevor ich loslege?'
         await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
         await emit({ type: 'reply', text: reply, intent: 'chat' })
+        return
+      } else if (mentionsImages(text)) {
+        const branche = extractBusinessDescription(history) || text
+        await runImageGenerationStep({
+          sessionKey,
+          loggedUserMessage,
+          branche,
+          extraPromptHint: text,
+          emit,
+        })
         return
       } else {
         // Treat free-text as additional instructions → still build, the message becomes the build prompt
@@ -611,10 +626,6 @@ export async function POST(req: NextRequest) {
       return
     }
 
-    if (coderResult.sandbox_id) {
-      await updateSiteSandboxId(sessionKey, coderResult.sandbox_id).catch(() => {})
-    }
-
     await logBuild({
       phone: sessionKey,
       slug: site.slug,
@@ -628,9 +639,24 @@ export async function POST(req: NextRequest) {
     }).catch((err) => console.error('logBuild failed:', err))
 
     if (coderResult.ok) {
-      await ensureVercelSubdomain(site.slug).catch((err) =>
-        console.error('ensureVercelSubdomain failed:', err)
-      )
+      const indexHtml = await downloadSiteFile(site.slug, 'index.html').catch((err) => {
+        console.error('downloadSiteFile index.html after build failed:', err)
+        return null
+      })
+      if (!indexHtml) {
+        const failureReply =
+          'Tut mir leid, da ist gerade etwas schiefgelaufen. Ich leite das an mein Team weiter.'
+        await appendTurn(sessionKey, loggedUserMessage, failureReply).catch(() => {})
+        await emit({
+          type: 'error',
+          text: failureReply,
+          error: 'build_missing_index_html',
+        })
+        return
+      }
+      if (coderResult.sandbox_id) {
+        await updateSiteSandboxId(sessionKey, coderResult.sandbox_id).catch(() => {})
+      }
       await incrementBuildCount(sessionKey).catch((err) =>
         console.error('incrementBuildCount failed:', err)
       )
@@ -650,14 +676,13 @@ export async function POST(req: NextRequest) {
       const reply = [bodyText, imageFollowUp, publishHint]
         .filter(Boolean)
         .join('\n\n')
-      const persistedReply = coderResult.site_url
-        ? `${reply}\n[ROMY_SITE:${coderResult.site_url}]`
-        : reply
+      const previewUrl = sitePreviewUrl(site.slug)
+      const persistedReply = `${reply}\n[ROMY_SITE:${previewUrl}]`
       await appendTurn(sessionKey, loggedUserMessage, persistedReply).catch(() => {})
       await emit({
         type: 'final',
         text: reply,
-        siteUrl: coderResult.site_url,
+        siteUrl: previewUrl,
         intent: 'build',
       })
       return

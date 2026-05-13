@@ -14,6 +14,7 @@ type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
+  quickReplies?: string[]
   siteUrl?: string
   imageDataUrl?: string
   paymentUrl?: string
@@ -26,7 +27,8 @@ const INITIAL_MESSAGE: Message = {
   id: 'romy-hello',
   role: 'assistant',
   content:
-    'Hey, ich bin Romy, deine persönliche Website-Assistentin. Zusammen bauen wir gemeinsam deine Seite. Wir fangen an mit einem groben Layout. Möchtest du starten?\n\n[ROMY_QUICK_REPLIES:Ja,Nein]',
+    'Hey, ich bin Romy, deine persönliche Website-Assistentin. Zusammen bauen wir gemeinsam deine Seite. Wir fangen an mit einem groben Layout. Möchtest du starten?',
+  quickReplies: ['Ja', 'Nein'],
 }
 
 type WebsiteChatProps = {
@@ -78,6 +80,20 @@ function parseAssistantMessage(content: string): {
   return { text, imageUrl, siteUrl, quickReplies }
 }
 
+function deriveQuickReplies(content: string): string[] | undefined {
+  const parsed = parseAssistantMessage(content)
+  if (parsed.quickReplies?.length) return parsed.quickReplies
+  if (
+    content.includes('Möchtest du starten?') ||
+    content.includes('Hast du konkrete Wünsche?') ||
+    content.includes('Soll ich jetzt deine Seite bauen?') ||
+    content.includes('magst du loslegen?')
+  ) {
+    return ['Ja', 'Nein']
+  }
+  return undefined
+}
+
 function parseUserMessage(content: string): { text: string; imageUrl?: string } {
   // Strip [ROMY_USER_IMAGE:url] marker that the server adds for user-uploaded
   // images so the chat shows the image inline (from Supabase) instead of the
@@ -115,6 +131,7 @@ function historyToMessages(
       id: `history-${index}-${m.role}`,
       role: m.role,
       content: m.content,
+      quickReplies: m.role === 'assistant' ? deriveQuickReplies(m.content) : undefined,
     })),
   ]
 }
@@ -288,7 +305,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
 
     function appendAssistant(
       content: string,
-      extras: { siteUrl?: string; paymentUrl?: string; bookingUrl?: string } = {}
+      extras: { siteUrl?: string; paymentUrl?: string; bookingUrl?: string; quickReplies?: string[] } = {}
     ) {
       setMessages((current) => [
         ...current,
@@ -296,6 +313,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
           id: `romy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           role: 'assistant',
           content,
+          quickReplies: extras.quickReplies,
           siteUrl: extras.siteUrl,
           paymentUrl: extras.paymentUrl,
           bookingUrl: extras.bookingUrl,
@@ -340,6 +358,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
           let event: {
             type: string
             text?: string
+            quickReplies?: string[]
             siteUrl?: string
             paymentUrl?: string
             bookingUrl?: string
@@ -359,6 +378,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
             appendAssistant(event.text, {
               paymentUrl: event.paymentUrl,
               bookingUrl: event.bookingUrl,
+              quickReplies: event.quickReplies,
             })
             waitingOnBuild = false
             setIsBuilding(false)
@@ -547,11 +567,12 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
               const lastMsg = messages[messages.length - 1]
               if (!lastMsg || lastMsg.role !== 'assistant') return null
               const parsed = parseAssistantMessage(lastMsg.content)
-              if (!parsed.quickReplies?.length) return null
+              const quickReplies = lastMsg.quickReplies || parsed.quickReplies || deriveQuickReplies(lastMsg.content)
+              if (!quickReplies?.length) return null
               const isInitial = lastMsg.id === INITIAL_MESSAGE.id
               return (
                 <div className="message-fade-in flex flex-wrap gap-2 pl-[46px] pt-1">
-                  {parsed.quickReplies.map((label) => (
+                  {quickReplies.map((label) => (
                     <button
                       key={label}
                       type="button"
