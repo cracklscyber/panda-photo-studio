@@ -123,6 +123,41 @@ export async function downloadSiteFile(slug: string, path: string): Promise<Buff
   return Buffer.from(ab)
 }
 
+function supabasePublicUrl(slug: string, path: string): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
+  const encoded = `${slug}/${path}`
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')
+  return `${base}/storage/v1/object/public/${BUCKET}/${encoded}`
+}
+
+export async function uploadUserChatImage(
+  slug: string,
+  dataUrl: string
+): Promise<string> {
+  const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/)
+  if (!match) throw new Error('uploadUserChatImage: not a base64 data URL')
+  const mime = match[1]
+  const b64 = match[2]
+  const ext =
+    mime === 'image/png'
+      ? 'png'
+      : mime === 'image/webp'
+        ? 'webp'
+        : mime === 'image/gif'
+          ? 'gif'
+          : mime === 'image/svg+xml'
+            ? 'svg'
+            : 'jpg'
+  const path = `user-uploads/upload-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}.${ext}`
+  const buffer = Buffer.from(b64, 'base64')
+  await uploadSiteFile(slug, path, buffer, mime)
+  return supabasePublicUrl(slug, path)
+}
+
 export async function uploadSiteFile(
   slug: string,
   path: string,

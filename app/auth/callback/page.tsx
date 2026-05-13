@@ -87,6 +87,7 @@ export default function AuthCallbackPage() {
         const linkData = (await res.json().catch(() => ({}))) as {
           canonicalSessionId?: string
           hadFirstBuild?: boolean
+          isNewAccountLink?: boolean
         }
         if (
           linkData.canonicalSessionId &&
@@ -99,6 +100,7 @@ export default function AuthCallbackPage() {
         const trackingKey = `romy-registration-tracked:${trackingSessionId}`
         if (
           linkData.hadFirstBuild &&
+          linkData.isNewAccountLink &&
           !window.localStorage.getItem(trackingKey) &&
           window.fbq
         ) {

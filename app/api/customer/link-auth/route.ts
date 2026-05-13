@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
     (await findCustomerByAuthUserId(authUserId)) ||
     (email ? await findCustomerByEmail(email) : null)
   if (existing && existing.session_id !== sessionKey) {
+    const isNewAccountLink = !existing.auth_user_id
     await mergeSessionIntoCanonical(sessionKey, existing.session_id)
     await linkAuthUser(existing.session_id, {
       authUserId,
@@ -139,9 +140,12 @@ export async function POST(req: NextRequest) {
       ok: true,
       canonicalSessionId: stripWebPrefix(existing.session_id),
       hadFirstBuild: hasCompletedFirstBuild(merged || existing),
+      isNewAccountLink,
     })
   }
 
+  const before = await findCustomer(sessionKey)
+  const isNewAccountLink = !before?.auth_user_id
   await ensureCustomer(sessionKey)
   await linkAuthUser(sessionKey, {
     authUserId,
@@ -155,5 +159,6 @@ export async function POST(req: NextRequest) {
     ok: true,
     canonicalSessionId: sessionId,
     hadFirstBuild: hasCompletedFirstBuild(linked),
+    isNewAccountLink,
   })
 }

@@ -34,26 +34,39 @@ export function MetaPixelConsent({ pixelId }: MetaPixelConsentProps) {
         </>
       )}
       {consent === 'unknown' && (
-        <div className="fixed inset-x-4 bottom-4 z-[80] mx-auto max-w-xl rounded-2xl border border-black/10 bg-white p-4 shadow-[0_24px_70px_-24px_rgba(0,0,0,0.35)]">
-          <p className="text-sm font-medium text-[#1a1714]">Cookies & Messung</p>
-          <p className="mt-1 text-xs leading-relaxed text-[#1a1714]/65">
-            Wir nutzen Meta Pixel, um Werbeanzeigen zu messen und Romy zu verbessern.
-          </p>
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => choose('declined')}
-              className="rounded-lg border border-black/10 px-3 py-2 text-xs font-medium text-[#1a1714] hover:bg-black/[0.03]"
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cookie-consent-title"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 px-4 py-8 backdrop-blur-sm"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.5)] sm:p-8">
+            <h2
+              id="cookie-consent-title"
+              className="text-xl font-semibold text-[#1a1714] sm:text-2xl"
             >
-              Ablehnen
-            </button>
-            <button
-              type="button"
-              onClick={() => choose('accepted')}
-              className="rounded-lg bg-[#1a1714] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2a2522]"
-            >
-              Akzeptieren
-            </button>
+              Cookies & Messung
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-[#1a1714]/70 sm:text-base">
+              Wir nutzen Meta Pixel, um Werbeanzeigen zu messen und Romy stetig zu verbessern.
+              Bitte triff eine Auswahl, bevor du fortfährst.
+            </p>
+            <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+              <button
+                type="button"
+                onClick={() => choose('declined')}
+                className="rounded-xl border border-black/10 px-5 py-3 text-sm font-medium text-[#1a1714] transition hover:bg-black/[0.04]"
+              >
+                Ablehnen
+              </button>
+              <button
+                type="button"
+                onClick={() => choose('accepted')}
+                className="rounded-xl bg-[#1a1714] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a2522]"
+              >
+                Akzeptieren
+              </button>
+            </div>
           </div>
         </div>
       )}

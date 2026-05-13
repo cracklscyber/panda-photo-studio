@@ -14,6 +14,26 @@ interface ChatMessage {
   content: string
 }
 
+function extractChatImages(content: string): { text: string; imageUrls: string[] } {
+  // Findet alle ROMY_USER_IMAGE / ROMY_IMAGE_DRAFT / ROMY_IMAGE_CONFIRMED
+  // Marker. Marker werden entfernt und URLs separat zurückgegeben, damit der
+  // Admin die Bilder inline rendert (statt als Marker-Text).
+  const markerRe = /\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED):([^\]]+)\]/g
+  const urls: string[] = []
+  let text = content.replace(markerRe, (_match, url: string) => {
+    urls.push(url)
+    return ''
+  })
+  // Doppelte URLs entfernen, freistehende URL im Body wegputzen
+  const unique = Array.from(new Set(urls))
+  for (const url of unique) {
+    const urlEsc = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    text = text.replace(new RegExp(`\\s*${urlEsc}\\s*`, 'g'), ' ')
+  }
+  text = text.replace(/\n{3,}/g, '\n\n').trim()
+  return { text, imageUrls: unique }
+}
+
 interface SiteRow {
   phone: string
   slug: string
@@ -157,25 +177,44 @@ export default async function ConvoPage({
             {messages.length === 0 && (
               <p className="text-sm text-neutral-500">Keine Nachrichten.</p>
             )}
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={`rounded-2xl px-4 py-3 text-sm ${
-                  m.role === 'user'
-                    ? 'ml-12 bg-blue-50 text-blue-950'
-                    : 'mr-12 bg-white text-neutral-900 border border-neutral-200'
-                }`}
-              >
+            {messages.map((m, i) => {
+              const { text, imageUrls } = extractChatImages(m.content)
+              return (
                 <div
-                  className={`mb-1 text-xs font-medium ${m.role === 'user' ? 'text-blue-600' : 'text-neutral-500'}`}
+                  key={i}
+                  className={`rounded-2xl px-4 py-3 text-sm ${
+                    m.role === 'user'
+                      ? 'ml-12 bg-blue-50 text-blue-950'
+                      : 'mr-12 bg-white text-neutral-900 border border-neutral-200'
+                  }`}
                 >
-                  {m.role === 'user' ? 'User' : 'Romy'}
+                  <div
+                    className={`mb-1 text-xs font-medium ${m.role === 'user' ? 'text-blue-600' : 'text-neutral-500'}`}
+                  >
+                    {m.role === 'user' ? 'User' : 'Romy'}
+                  </div>
+                  {imageUrls.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {imageUrls.map((url) => (
+                        <a key={url} href={url} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt="Chat-Bild"
+                            className="max-h-48 w-auto rounded-lg border border-neutral-200"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {text && (
+                    <div className="whitespace-pre-wrap break-words leading-relaxed">
+                      {text}
+                    </div>
+                  )}
                 </div>
-                <div className="whitespace-pre-wrap break-words leading-relaxed">
-                  {m.content}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 

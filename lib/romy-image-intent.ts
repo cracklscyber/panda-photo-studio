@@ -8,6 +8,7 @@ import type { ChatMessage } from './romy-chat'
 
 export const IMAGE_DRAFT_MARKER = '[ROMY_IMAGE_DRAFT:'
 export const IMAGE_CONFIRMED_MARKER = '[ROMY_IMAGE_CONFIRMED:'
+export const USER_IMAGE_MARKER = '[ROMY_USER_IMAGE:'
 
 const GENERATE_TRIGGERS: RegExp[] = [
   /\b(generier|erstell|mach|erzeug|kreier)[a-zäöüß]*\s+(mir\s+)?(ein|nen|noch|bitte|doch)?\s*(eigenes?|individuelles?|neues?|extra)?\s*(bild|foto|hero|grafik|illustration)/i,

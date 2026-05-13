@@ -11,12 +11,13 @@ import {
   publishSite,
   FREE_BUILD_LIMIT,
 } from '@/lib/romy-sites'
-import { sitePublicUrl } from '@/lib/supabase-storage'
+import { sitePublicUrl, uploadUserChatImage } from '@/lib/supabase-storage'
 import { loadHistory, appendTurn, resetHistory } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 import {
   detectImageIntent,
   isFeatureEnabled as imageFeatureEnabled,
+  USER_IMAGE_MARKER,
 } from '@/lib/romy-image-intent'
 import {
   generateDraftImage,
@@ -45,9 +46,6 @@ const ACK_FOLLOWUP =
 
 const AUTH_REQUIRED_REPLY =
   'Damit du deine Seite behältst und ich sie weiter für dich pflegen kann, lege bitte kurz dein Kundenkonto an. Das geht in Sekunden mit Google oder E-Mail. Danach speichere ich deinen Chatverlauf, deine Entwürfe und deine Website, und wir machen genau hier weiter.'
-
-const POST_FIRST_BUILD_AUTH_REPLY =
-  'Wenn du mit diesem Entwurf weitermachen willst, lege bitte jetzt dein kostenloses Kundenkonto an. Dann bleiben dein Chatverlauf, deine Entwürfe und deine Website gespeichert.'
 
 const ONBOARDING_JA_REPLY =
   [
@@ -83,11 +81,9 @@ function buildLimitMessage(sessionKey: string): {
 } {
   const paymentUrl = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(sessionKey)}`
   const text = [
-    'Wir haben jetzt schon einiges zusammen gebaut. Deine Seite bleibt erhalten.',
+    'Damit ich weiter an deiner Seite arbeiten kann, brauchst du eine Mitgliedschaft. 29 € im Monat, jederzeit kündbar.',
     '',
-    'Wenn du weiter mit mir Änderungen vornehmen möchtest, schließ einfach deine Mitgliedschaft ab. 29 € im Monat, jederzeit kündbar.',
-    '',
-    'Lieber vorher kurz sprechen? Wir können auch einen kostenlosen Termin vereinbaren.',
+    'Du kannst direkt zum Stripe Checkout oder vorher kurz einen Beratungstermin buchen.',
   ].join('\n')
   return { text, paymentUrl, bookingUrl: CAL_BOOKING_URL }
 }
@@ -218,6 +214,22 @@ export async function POST(req: NextRequest) {
   const sessionKey = `web:${sessionId}`
 
   return streamResponse(async (emit) => {
+    // Wenn der User ein Bild mitgeschickt hat, persistieren wir es sofort in
+    // Supabase, damit es im Verlauf (DB) auftaucht und nicht nur im lokalen
+    // Browser-Cache hängt. Der Sandbox-Build nutzt weiterhin die rohe Data-URL
+    // unten — der Upload ist additiv und beeinflusst Build-Logik nicht.
+    let loggedUserMessage = text
+    if (imageDataUrl) {
+      try {
+        const siteForUpload = await getOrCreateSite(sessionKey, text)
+        const publicUrl = await uploadUserChatImage(siteForUpload.slug, imageDataUrl)
+        loggedUserMessage = `${USER_IMAGE_MARKER}${publicUrl}]\n${text}`
+      } catch (err) {
+        console.error('uploadUserChatImage failed:', err)
+      }
+    }
+
+
     if (isOnboarding) {
       const answer = detectOnboardingAnswer(text)
       if (answer === 'ja' || answer === 'nein') {
@@ -236,7 +248,7 @@ export async function POST(req: NextRequest) {
           )
         }
         const reply = answer === 'ja' ? ONBOARDING_JA_REPLY : ONBOARDING_NEIN_REPLY
-        await resetHistory(sessionKey, text, reply).catch(() => {})
+        await resetHistory(sessionKey, loggedUserMessage, reply).catch(() => {})
         await emit({ type: 'reply', text: reply, intent: 'chat' })
         return
       }
@@ -252,7 +264,7 @@ export async function POST(req: NextRequest) {
       hasCompletedFirstBuild(customer) &&
       !isAuthenticated(customer)
     ) {
-      await appendTurn(sessionKey, text, AUTH_REQUIRED_REPLY).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, AUTH_REQUIRED_REPLY).catch(() => {})
       await emit({ type: 'auth_required', text: AUTH_REQUIRED_REPLY })
       return
     }
@@ -282,7 +294,7 @@ export async function POST(req: NextRequest) {
         } else {
           result = cancelDraftImage()
         }
-        await appendTurn(sessionKey, text, result.reply).catch(() => {})
+        await appendTurn(sessionKey, loggedUserMessage, result.reply).catch(() => {})
         await emit({ type: 'reply', text: result.reply, intent: 'chat' })
         return
       }
@@ -296,7 +308,7 @@ export async function POST(req: NextRequest) {
       const reply = site
         ? `Alles klar, ich habe deinen Entwurf veröffentlicht.\n\n${sitePublicUrl(site.slug)}`
         : PUBLISH_MISSING_DRAFT_REPLY
-      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
       await emit({
         type: 'final',
         text: reply,
@@ -307,7 +319,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (previousAssistantAskedForBusinessInfo(history)) {
-      await appendTurn(sessionKey, text, DESIGN_QUESTION_REPLY).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, DESIGN_QUESTION_REPLY).catch(() => {})
       await emit({ type: 'reply', text: DESIGN_QUESTION_REPLY, intent: 'chat' })
       return
     }
@@ -324,7 +336,7 @@ export async function POST(req: NextRequest) {
           routed = { intent: 'build', classify_ms: 0 }
         } else {
           const reply = fallbackReply(text)
-          await appendTurn(sessionKey, text, reply).catch(() => {})
+          await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
           await emit({ type: 'reply', text: reply, intent: 'chat', degraded: true })
           return
         }
@@ -335,7 +347,7 @@ export async function POST(req: NextRequest) {
       const reply =
         sanitizeReply(routed.chat_reply || '') ||
         'Sag mir einfach, was ich für deine Seite machen soll.'
-      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
       await emit({ type: 'reply', text: reply, intent: 'chat' })
       return
     }
@@ -353,7 +365,7 @@ export async function POST(req: NextRequest) {
           console.error('markCallbackRequested failed:', err)
         )
       }
-      await appendTurn(sessionKey, text, limit.text).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, limit.text).catch(() => {})
       await emit({
         type: 'reply',
         text: limit.text,
@@ -405,7 +417,7 @@ export async function POST(req: NextRequest) {
       const reply = timedOut
         ? 'Entschuldige, der Build hat zu lange gedauert und wurde automatisch gestoppt. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'
         : 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'
-      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
       await emit({ type: 'error', text: reply, error: (err as Error).message })
       return
     }
@@ -439,7 +451,6 @@ export async function POST(req: NextRequest) {
         )
       }
       const bodyText = sanitizeReply(coderResult.reply || 'Fertig.')
-      const shouldPromptForAccount = isFirstBuild && (!customer || !isAuthenticated(customer))
       const publishHint = isFirstBuild
         ? 'Das ist erstmal nur dein Entwurf. Wenn du zufrieden bist, schreib: veröffentlichen. Dann schalte ich die Seite live.'
         : ''
@@ -448,26 +459,22 @@ export async function POST(req: NextRequest) {
         `${bodyText}\n\n${coderResult.site_url}`,
         imageFollowUp,
         publishHint,
-        shouldPromptForAccount ? POST_FIRST_BUILD_AUTH_REPLY : '',
       ]
         .filter(Boolean)
         .join('\n\n')
-      await appendTurn(sessionKey, text, reply).catch(() => {})
+      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
       await emit({
         type: 'final',
         text: reply,
         siteUrl: coderResult.site_url,
         intent: 'build',
       })
-      if (shouldPromptForAccount) {
-        await emit({ type: 'auth_prompt' })
-      }
       return
     }
 
     const failureReply =
       'Tut mir leid, da ist gerade etwas schiefgelaufen. Ich leite das an mein Team weiter.'
-    await appendTurn(sessionKey, text, failureReply).catch(() => {})
+    await appendTurn(sessionKey, loggedUserMessage, failureReply).catch(() => {})
     await emit({ type: 'error', text: failureReply, error: coderResult.error })
   })
 }

@@ -56,6 +56,17 @@ function parseAssistantMessage(content: string): { text: string; imageUrl?: stri
   return { text, imageUrl }
 }
 
+function parseUserMessage(content: string): { text: string; imageUrl?: string } {
+  // Strip [ROMY_USER_IMAGE:url] marker that the server adds for user-uploaded
+  // images so the chat shows the image inline (from Supabase) instead of the
+  // raw marker text. Falls back to plain content when no marker exists.
+  const markerRe = /\[ROMY_USER_IMAGE:([^\]]+)\]/
+  const match = content.match(markerRe)
+  const imageUrl = match ? match[1] : undefined
+  const text = content.replace(markerRe, '').replace(/\n{3,}/g, '\n\n').trim()
+  return { text, imageUrl }
+}
+
 function getSessionId(): string {
   const key = 'romy-web-session'
   const existing = window.localStorage.getItem(key)
@@ -425,7 +436,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
               const parsed =
                 message.role === 'assistant'
                   ? parseAssistantMessage(message.content)
-                  : { text: message.content, imageUrl: undefined as string | undefined }
+                  : parseUserMessage(message.content)
               return (
               <div
                 key={message.id}
@@ -447,12 +458,12 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                       className="mb-2 max-h-48 w-auto rounded-lg"
                     />
                   )}
-                  {parsed.imageUrl && (
+                  {parsed.imageUrl && !message.imageDataUrl && (
                     <a href={parsed.imageUrl} target="_blank" rel="noreferrer">
                       <img
                         src={parsed.imageUrl}
-                        alt="Generiertes Bild"
-                        className="mb-2 max-h-72 w-auto rounded-lg"
+                        alt={message.role === 'user' ? 'Vom Kunden hochgeladenes Bild' : 'Generiertes Bild'}
+                        className={`mb-2 w-auto rounded-lg ${message.role === 'user' ? 'max-h-48' : 'max-h-72'}`}
                       />
                     </a>
                   )}
@@ -476,7 +487,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                           rel="noreferrer"
                           className="inline-flex rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-700"
                         >
-                          Mitgliedschaft starten
+                          Stripe Checkout
                         </a>
                       )}
                       {message.bookingUrl && (
@@ -486,7 +497,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                           rel="noreferrer"
                           className="inline-flex rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-medium text-neutral-800 transition hover:border-neutral-900 hover:text-neutral-950"
                         >
-                          Termin vereinbaren
+                          Beratung buchen
                         </a>
                       )}
                     </div>
