@@ -17,11 +17,11 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <span className="relative inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-black/8 bg-white/65 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.85)] backdrop-blur-xl">
               <Image
-                src="/romy-logo.png"
+                src="/romy-avatar.png"
                 alt="Romy"
-                width={583}
-                height={1000}
-                className="h-full w-full object-contain"
+                width={580}
+                height={580}
+                className="h-full w-full object-cover"
                 priority
               />
             </span>
@@ -37,12 +37,6 @@ export default function Home() {
             <div className="md:hidden">
               <AccountMenu variant="light" />
             </div>
-            <BookingModal
-              url={CAL_BOOKING_URL}
-              className="rounded-xl bg-[#1a1714] px-4 py-2.5 text-sm font-semibold text-[#f5efe2] shadow-sm transition hover:bg-[#2a2522]"
-            >
-              Support anfordern
-            </BookingModal>
           </div>
         </div>
       </header>
@@ -124,11 +118,11 @@ export default function Home() {
                 aria-hidden
               >
                 <Image
-                  src="/romy-logo.png"
+                  src="/romy-avatar.png"
                   alt="Romy"
-                  width={583}
-                  height={1000}
-                  className="h-full w-full object-contain"
+                  width={580}
+                  height={580}
+                  className="h-full w-full object-cover"
                 />
               </span>
               <div>
@@ -147,16 +141,22 @@ export default function Home() {
               <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-md bg-white/95 px-4 py-2.5 text-sm leading-snug text-[#1a1714] shadow-sm">
                 Hi Romy, ich brauche eine Seite für mein Café Mira in München.
               </div>
-              <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-md bg-white/8 px-4 py-2.5 text-sm leading-snug text-white/90 backdrop-blur-sm">
+              <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-md border border-[#21e66b]/30 bg-[#21e66b]/[0.16] px-4 py-2.5 text-sm leading-snug text-white shadow-[0_2px_12px_-4px_rgba(33,230,107,0.25)] backdrop-blur-sm">
                 Klar. Erzähl mir noch kurz: was macht euer Café besonders, und welche Stimmung soll die Seite haben?
               </div>
               <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-md bg-white/95 px-4 py-2.5 text-sm leading-snug text-[#1a1714] shadow-sm">
                 Specialty Coffee, hand-geröstet. Modern, viel Holz, warm. Adresse: Sonnenstraße 14.
               </div>
-              <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-md bg-white/8 px-4 py-2.5 text-sm leading-snug text-white/90 backdrop-blur-sm">
+              <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-md border border-[#21e66b]/30 bg-[#21e66b]/[0.16] px-4 py-2.5 text-sm leading-snug text-white shadow-[0_2px_12px_-4px_rgba(33,230,107,0.25)] backdrop-blur-sm">
                 Verstanden, hier ist mein erster Vorschlag:
               </div>
               <div className="mr-auto w-[85%] overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06] shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)]">
+                <div className="flex items-center gap-1.5 border-b border-white/10 bg-white/[0.04] px-3 py-2">
+                  <span className="h-2 w-2 rounded-full bg-white/25" />
+                  <span className="h-2 w-2 rounded-full bg-white/25" />
+                  <span className="h-2 w-2 rounded-full bg-white/25" />
+                  <span className="ml-2 truncate text-[10px] text-white/45">cafemira.halloromy.com</span>
+                </div>
                 <Image
                   src="/cafe-site.png"
                   alt="Vorschau der von Romy gebauten Café-Website"
@@ -164,8 +164,14 @@ export default function Home() {
                   height={1200}
                   className="h-44 w-full object-cover object-top"
                 />
-                <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-white/70">
-                  <span className="truncate">cafemira.halloromy.com</span>
+                <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-[11px] text-white/70">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inset-0 rounded-full bg-[#21e66b] opacity-60 [animation:ping_2s_cubic-bezier(0,0,0.2,1)_infinite]" />
+                      <span className="relative h-1.5 w-1.5 rounded-full bg-[#21e66b]" />
+                    </span>
+                    Veröffentlicht
+                  </span>
                   <span className="rounded-full bg-[#21e66b]/20 px-2 py-0.5 text-[10px] font-medium text-[#21e66b]">Live</span>
                 </div>
               </div>
