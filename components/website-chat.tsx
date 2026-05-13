@@ -26,10 +26,8 @@ const INITIAL_MESSAGE: Message = {
   id: 'romy-hello',
   role: 'assistant',
   content:
-    'Hey, ich bin Romy, deine persönliche Website-Assistentin. Zusammen bauen wir gemeinsam deine Seite. Wir fangen an mit einem groben Layout. Möchtest du starten?',
+    'Hey, ich bin Romy, deine persönliche Website-Assistentin. Zusammen bauen wir gemeinsam deine Seite. Wir fangen an mit einem groben Layout. Möchtest du starten?\n\n[ROMY_QUICK_REPLIES:Ja,Nein]',
 }
-
-const ONBOARDING_QUICK_REPLIES = ['Ja', 'Nein']
 
 type WebsiteChatProps = {
   className?: string
@@ -39,6 +37,7 @@ function parseAssistantMessage(content: string): {
   text: string
   imageUrl?: string
   siteUrl?: string
+  quickReplies?: string[]
 } {
   const markerRe = /\[ROMY_IMAGE_(?:DRAFT|CONFIRMED):([^\]]+)\]/
   const match = content.match(markerRe)
@@ -50,6 +49,17 @@ function parseAssistantMessage(content: string): {
     text = text.replace(new RegExp(`\\s*${urlEsc}\\s*`, 'g'), ' ').trim()
   }
 
+  const quickRe = /\[ROMY_QUICK_REPLIES:([^\]]+)\]/
+  const quickMatch = text.match(quickRe)
+  let quickReplies: string[] | undefined
+  if (quickMatch) {
+    quickReplies = quickMatch[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    text = text.replace(quickRe, '').trim()
+  }
+
   const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.com\/(?:site\/)?[a-z0-9-]+/i
   const siteMatch = text.match(siteUrlRe)
   const siteUrl = siteMatch ? siteMatch[0] : undefined
@@ -58,7 +68,7 @@ function parseAssistantMessage(content: string): {
   }
 
   text = text.replace(/\n{3,}/g, '\n\n').trim()
-  return { text, imageUrl, siteUrl }
+  return { text, imageUrl, siteUrl, quickReplies }
 }
 
 function parseUserMessage(content: string): { text: string; imageUrl?: string } {
@@ -445,15 +455,29 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
               return (
               <div
                 key={message.id}
-                className={`message-fade-in flex ${
+                className={`message-fade-in flex items-end gap-2.5 ${
                   message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}
               >
+                {message.role === 'assistant' && (
+                  <span
+                    aria-hidden
+                    className="relative inline-flex h-9 w-9 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white shadow-sm"
+                  >
+                    <Image
+                      src="/romy-avatar.png"
+                      alt=""
+                      width={72}
+                      height={72}
+                      className="h-full w-full object-cover"
+                    />
+                  </span>
+                )}
                 <div
-                  className={`max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[74%] ${
+                  className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[70%] ${
                     message.role === 'user'
-                      ? 'bg-neutral-900 text-white'
-                      : 'border border-neutral-200 bg-white text-neutral-800'
+                      ? 'rounded-br-md bg-neutral-900 text-white'
+                      : 'rounded-bl-md border border-neutral-200 bg-white text-neutral-800'
                   }`}
                 >
                   {message.imageDataUrl && (
@@ -511,25 +535,45 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
               </div>
               )
             })}
-            {!userHasReplied && (
-              <div className="message-fade-in flex flex-wrap gap-2 pt-1">
-                {ONBOARDING_QUICK_REPLIES.map((label) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => sendMessage(label, { isOnboarding: true })}
-                    disabled={isSending || !sessionId}
-                    className="rounded-full border border-neutral-300 bg-white px-5 py-2 text-sm font-medium text-neutral-800 transition hover:border-neutral-900 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {(() => {
+              if (isSending) return null
+              const lastMsg = messages[messages.length - 1]
+              if (!lastMsg || lastMsg.role !== 'assistant') return null
+              const parsed = parseAssistantMessage(lastMsg.content)
+              if (!parsed.quickReplies?.length) return null
+              const isInitial = lastMsg.id === INITIAL_MESSAGE.id
+              return (
+                <div className="message-fade-in flex flex-wrap gap-2 pl-[46px] pt-1">
+                  {parsed.quickReplies.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => sendMessage(label, { isOnboarding: isInitial })}
+                      disabled={isSending || !sessionId}
+                      className="rounded-full border border-neutral-300 bg-white px-5 py-2 text-sm font-medium text-neutral-800 transition hover:border-neutral-900 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
             {isSending && (
-              <div className="message-fade-in flex justify-start">
-                <div className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-600">
-                  <span className="flex h-2 w-2 shrink-0">
+              <div className="message-fade-in flex items-end gap-2.5 justify-start">
+                <span
+                  aria-hidden
+                  className="relative inline-flex h-9 w-9 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white shadow-sm"
+                >
+                  <Image
+                    src="/romy-avatar.png"
+                    alt=""
+                    width={72}
+                    height={72}
+                    className="h-full w-full object-cover"
+                  />
+                </span>
+                <div className="flex items-center gap-3 rounded-2xl rounded-bl-md border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-600">
+                  <span className="relative flex h-2 w-2 shrink-0">
                     <span className="absolute h-2 w-2 animate-ping rounded-full bg-emerald-400 opacity-70" />
                     <span className="relative h-2 w-2 rounded-full bg-emerald-500" />
                   </span>

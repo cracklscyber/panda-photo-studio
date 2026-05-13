@@ -64,6 +64,28 @@ export async function appendTurn(
     )
 }
 
+export async function appendAssistantOnly(
+  phone: string,
+  assistantReply: string
+): Promise<void> {
+  const prior = await loadHistory(phone)
+  const next = [
+    ...prior,
+    { role: 'assistant' as const, content: assistantReply },
+  ].slice(-MAX_STORED)
+
+  await sb()
+    .from('romy_conversations')
+    .upsert(
+      {
+        phone,
+        messages: next,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'phone' }
+    )
+}
+
 export async function resetHistory(
   phone: string,
   userMessage: string,

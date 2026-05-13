@@ -12,8 +12,10 @@ import {
   FREE_BUILD_LIMIT,
 } from '@/lib/romy-sites'
 import { sitePublicUrl, uploadUserChatImage } from '@/lib/supabase-storage'
-import { loadHistory, appendTurn, resetHistory } from '@/lib/romy-chat'
+import { loadHistory, appendTurn, appendAssistantOnly, resetHistory } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
+import { generateImagesForBranche } from '@/lib/gemini-images'
+import { IMAGE_DRAFT_MARKER } from '@/lib/romy-image-intent'
 import {
   detectImageIntent,
   isFeatureEnabled as imageFeatureEnabled,
@@ -48,21 +50,23 @@ const AUTH_REQUIRED_REPLY =
   'Damit du deine Seite behältst und ich sie weiter für dich pflegen kann, lege bitte kurz dein Kundenkonto an. Das geht in Sekunden mit Google oder E-Mail. Danach speichere ich deinen Chatverlauf, deine Entwürfe und deine Website, und wir machen genau hier weiter.'
 
 const ONBOARDING_JA_REPLY =
-  [
-    'Alles klar, dann legen wir los. Erzähl mir kurz und knapp über dich und dein Unternehmen:',
-    '',
-    '· Was machst du?',
-    '· Wie heißt deine Firma?',
-    '· Wo bist du?',
-    '',
-    'Erstmal nur Infos zum Unternehmen, keine Bilder schicken. Im nächsten Schritt frag ich nach dem Design.',
-  ].join('\n')
+  'Alles klar. Erzähl mir bitte etwas über deine Firma. Was genau machst du?'
 const ONBOARDING_NEIN_REPLY =
   'Alles klar, melde dich einfach wenn du soweit bist.'
-const DESIGN_QUESTION_REPLY =
-  'Super. Jetzt noch grob zum Look: Wie soll die Seite wirken? Eher modern, klassisch, verspielt oder minimal? Beschreib es einfach in eigenen Worten.'
+const IMAGE_INTRO_QUESTION =
+  'Alles klar. Ich generiere dir jetzt erstmal drei Bilder, deine eigenen kannst du später hinzufügen. Hast du konkrete Wünsche?'
+const WISH_PROMPT =
+  'Erzähl mir kurz, was dir vorschwebt. Stimmung, Farben, was darauf zu sehen sein soll.'
+const POST_IMAGES_GENERATING =
+  'Geht klar, ich male dir gerade drei Vorschläge. Einen Moment.'
+const POST_IMAGES_BUILD_QUESTION =
+  'Damit kann ich loslegen. Soll ich jetzt deine Seite bauen?'
+const POST_IMAGES_FAILED =
+  'Mit der Bildgenerierung hat gerade etwas gehakt. Ich leite das an mein Team weiter. Wir können trotzdem mit dem Entwurf weitermachen, magst du loslegen?'
 const POST_BUILD_IMAGE_QUESTION =
   'Möchtest du zusammen mit mir Bilder generieren oder hast du bereits eigene? Schick sie mir einfach rein.'
+
+const QUICK_REPLIES_JA_NEIN = '[ROMY_QUICK_REPLIES:Ja,Nein]'
 
 const PUBLISH_MISSING_DRAFT_REPLY =
   'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
@@ -126,7 +130,7 @@ function heuristicBuildIntent(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): boolean {
   const lower = text.toLowerCase()
-  if (previousAssistantAskedForDesign(history)) return true
+  if (previousAssistantAskedToBuildAfterImages(history)) return true
   return /\b(bau|baue|bauen|erstell|erstelle|machen|mach|änder|ändere|aendere|update|aktualisier|aktualisiere|füg|fueg|hinzu|lösch|loesch|entfern|design|farbe|schrift|öffnungszeit|oeffnungszeit|adresse|kontakt|preis|leistung|seite|website|webseite|homepage)\b/i.test(lower)
 }
 
@@ -134,20 +138,56 @@ function wantsPublish(text: string): boolean {
   return /\b(veroeffentlichen|veröffentlichen|live schalten|online stellen|freigeben|seite live|go live)\b/i.test(text)
 }
 
+function lastAssistant(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): { content: string } | null {
+  return [...history].reverse().find((m) => m.role === 'assistant') ?? null
+}
+
 function previousAssistantAskedForBusinessInfo(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): boolean {
-  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
-  if (!lastAssistant) return false
-  return lastAssistant.content.includes('Erstmal nur Infos zum Unternehmen')
+  const last = lastAssistant(history)
+  if (!last) return false
+  return last.content.includes('Erzähl mir bitte etwas über deine Firma')
 }
 
-function previousAssistantAskedForDesign(
+function previousAssistantAskedAboutImageWishes(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): boolean {
-  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
-  if (!lastAssistant) return false
-  return lastAssistant.content.includes('Jetzt noch grob zum Look')
+  const last = lastAssistant(history)
+  if (!last) return false
+  return last.content.includes('Ich generiere dir jetzt erstmal drei Bilder')
+}
+
+function previousAssistantAskedForWish(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const last = lastAssistant(history)
+  if (!last) return false
+  return last.content.includes('Erzähl mir kurz, was dir vorschwebt')
+}
+
+function previousAssistantAskedToBuildAfterImages(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const last = lastAssistant(history)
+  if (!last) return false
+  return last.content.includes('Damit kann ich loslegen. Soll ich jetzt deine Seite bauen?')
+}
+
+function extractBusinessDescription(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): string {
+  // Find the user message that came right after the "Erzähl mir bitte etwas über deine Firma" question.
+  for (let i = 0; i < history.length - 1; i++) {
+    const m = history[i]
+    if (m.role === 'assistant' && m.content.includes('Erzähl mir bitte etwas über deine Firma')) {
+      const next = history[i + 1]
+      if (next && next.role === 'user') return next.content
+    }
+  }
+  return ''
 }
 
 
@@ -165,6 +205,63 @@ type StreamEvent =
   | { type: 'error'; text: string; error?: string }
   | { type: 'auth_required'; text: string }
   | { type: 'auth_prompt' }
+
+async function runImageGenerationStep(opts: {
+  sessionKey: string
+  loggedUserMessage: string
+  branche: string
+  extraPromptHint: string
+  emit: (event: StreamEvent) => Promise<void>
+}): Promise<void> {
+  const { sessionKey, loggedUserMessage, branche, extraPromptHint, emit } = opts
+
+  // Tell the user immediately that generation is starting; long Gemini call follows.
+  await emit({ type: 'reply', text: POST_IMAGES_GENERATING, intent: 'chat' })
+  await appendTurn(sessionKey, loggedUserMessage, POST_IMAGES_GENERATING).catch(() => {})
+
+  const site = await getOrCreateSite(sessionKey, branche || 'kunde').catch((err) => {
+    console.error('runImageGenerationStep: getOrCreateSite failed:', err)
+    return null
+  })
+  if (!site) {
+    await emit({ type: 'reply', text: POST_IMAGES_FAILED, intent: 'chat' })
+    await appendTurn(sessionKey, '', POST_IMAGES_FAILED).catch(() => {})
+    return
+  }
+
+  const branchePrompt = extraPromptHint
+    ? `${branche} | Wunsch: ${extraPromptHint}`
+    : branche
+
+  let images: Awaited<ReturnType<typeof generateImagesForBranche>> = []
+  try {
+    images = await generateImagesForBranche({
+      slug: site.slug,
+      branche: branchePrompt,
+      count: 3,
+    })
+  } catch (err) {
+    console.error('runImageGenerationStep: generation failed:', err)
+  }
+
+  if (images.length === 0) {
+    await emit({ type: 'reply', text: POST_IMAGES_FAILED, intent: 'chat' })
+    await appendTurn(sessionKey, '', POST_IMAGES_FAILED).catch(() => {})
+    return
+  }
+
+  // Emit one assistant message per image so the chat renders three picture bubbles.
+  for (const img of images) {
+    const text = `${IMAGE_DRAFT_MARKER}${img.url}]`
+    await emit({ type: 'reply', text, intent: 'chat' })
+    await appendAssistantOnly(sessionKey, text).catch(() => {})
+  }
+
+  // Final question: should I build now?
+  const buildAsk = `${POST_IMAGES_BUILD_QUESTION}\n\n${QUICK_REPLIES_JA_NEIN}`
+  await emit({ type: 'reply', text: buildAsk, intent: 'chat' })
+  await appendAssistantOnly(sessionKey, buildAsk).catch(() => {})
+}
 
 function streamResponse(
   produce: (emit: (event: StreamEvent) => Promise<void>) => Promise<void>
@@ -335,15 +432,63 @@ export async function POST(req: NextRequest) {
       return
     }
 
+    // Q2 just answered → Q3 (image-intro + wish question with Ja/Nein quick-replies)
     if (previousAssistantAskedForBusinessInfo(history)) {
-      await appendTurn(sessionKey, loggedUserMessage, DESIGN_QUESTION_REPLY).catch(() => {})
-      await emit({ type: 'reply', text: DESIGN_QUESTION_REPLY, intent: 'chat' })
+      const reply = `${IMAGE_INTRO_QUESTION}\n\n${QUICK_REPLIES_JA_NEIN}`
+      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
+      await emit({ type: 'reply', text: reply, intent: 'chat' })
       return
     }
 
+    // Q3 answered → either ask for wish (Ja) or kick off image generation immediately (Nein/other)
+    if (previousAssistantAskedAboutImageWishes(history)) {
+      const onbAnswer = detectOnboardingAnswer(text)
+      if (onbAnswer === 'ja') {
+        await appendTurn(sessionKey, loggedUserMessage, WISH_PROMPT).catch(() => {})
+        await emit({ type: 'reply', text: WISH_PROMPT, intent: 'chat' })
+        return
+      }
+      // Nein, or free text → generate images right away from the business description
+      const branche = extractBusinessDescription(history) || text
+      await runImageGenerationStep({
+        sessionKey,
+        loggedUserMessage,
+        branche,
+        extraPromptHint: '',
+        emit,
+      })
+      return
+    }
+
+    // User typed their concrete wish → generate images using description + wish
+    if (previousAssistantAskedForWish(history)) {
+      const branche = extractBusinessDescription(history) || text
+      await runImageGenerationStep({
+        sessionKey,
+        loggedUserMessage,
+        branche,
+        extraPromptHint: text,
+        emit,
+      })
+      return
+    }
+
+    // After images shown, Romy asked "Soll ich jetzt deine Seite bauen?"
     let routed: Awaited<ReturnType<typeof routeMessage>>
-    if (previousAssistantAskedForDesign(history)) {
-      routed = { intent: 'build', classify_ms: 0 }
+    if (previousAssistantAskedToBuildAfterImages(history)) {
+      const onbAnswer = detectOnboardingAnswer(text)
+      if (onbAnswer === 'ja') {
+        routed = { intent: 'build', classify_ms: 0 }
+      } else if (onbAnswer === 'nein') {
+        const reply =
+          'Kein Problem. Was soll ich noch ändern oder ergänzen, bevor ich loslege?'
+        await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
+        await emit({ type: 'reply', text: reply, intent: 'chat' })
+        return
+      } else {
+        // Treat free-text as additional instructions → still build, the message becomes the build prompt
+        routed = { intent: 'build', classify_ms: 0 }
+      }
     } else {
       try {
         routed = await routeMessage(history, text, !!imageDataUrl)

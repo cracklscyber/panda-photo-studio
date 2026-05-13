@@ -112,7 +112,7 @@ export function confirmDraftImage(history: ChatMessage[]): ImageActionResult {
     }
   }
   return {
-    reply: `Gemerkt, ich nutze das Bild beim nächsten Build.\n\n${IMAGE_CONFIRMED_MARKER}${url}]`,
+    reply: `Gemerkt, ich nutze das Bild für deine Seite.\n\nSoll ich mit dem ersten Website-Entwurf beginnen?\n\n${IMAGE_CONFIRMED_MARKER}${url}]`,
     url,
     status: 'confirmed',
   }

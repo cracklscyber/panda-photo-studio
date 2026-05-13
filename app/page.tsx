@@ -19,8 +19,8 @@ export default function Home() {
               <Image
                 src="/romy-avatar.png"
                 alt="Romy"
-                width={580}
-                height={580}
+                width={640}
+                height={640}
                 className="h-full w-full object-cover"
                 priority
               />
@@ -120,8 +120,8 @@ export default function Home() {
                 <Image
                   src="/romy-avatar.png"
                   alt="Romy"
-                  width={580}
-                  height={580}
+                  width={640}
+                  height={640}
                   className="h-full w-full object-cover"
                 />
               </span>
