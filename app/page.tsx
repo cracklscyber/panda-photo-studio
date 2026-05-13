@@ -30,7 +30,6 @@ export default function Home() {
           <nav className="hidden items-center gap-8 text-sm font-medium text-[#1a1714]/70 md:flex">
             <a href="#how" className="transition hover:text-[#1a1714]">Wie funktioniert's</a>
             <a href="#chat" className="transition hover:text-[#1a1714]">Chat</a>
-            <a href="#presence" className="transition hover:text-[#1a1714]">Online-Präsenz</a>
             <AccountMenu variant="light" />
           </nav>
           <div className="flex items-center gap-2">
@@ -245,7 +244,7 @@ export default function Home() {
             <div>
               <div className="text-sm font-semibold">Romy AI</div>
               <p className="mt-1 text-xs text-[#f5efe2]/55">
-                Betrieben von Zoe Christiansen · Berlin
+                Berlin
               </p>
             </div>
             <nav className="flex flex-wrap gap-5 text-xs text-[#f5efe2]/55">

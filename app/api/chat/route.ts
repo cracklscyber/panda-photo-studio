@@ -11,12 +11,12 @@ import {
   publishSite,
   FREE_BUILD_LIMIT,
 } from '@/lib/romy-sites'
-import { sitePublicUrl, uploadUserChatImage } from '@/lib/supabase-storage'
+import { sitePublicUrl, sitePreviewUrl, uploadUserChatImage } from '@/lib/supabase-storage'
 import { loadHistory, appendTurn, appendAssistantOnly, resetHistory } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 import { generateImagesForBranche } from '@/lib/gemini-images'
-import { IMAGE_DRAFT_MARKER } from '@/lib/romy-image-intent'
 import {
+  IMAGE_DRAFT_MARKER,
   detectImageIntent,
   isFeatureEnabled as imageFeatureEnabled,
   USER_IMAGE_MARKER,
@@ -251,8 +251,11 @@ async function runImageGenerationStep(opts: {
   }
 
   // Emit one assistant message per image so the chat renders three picture bubbles.
+  // Use the apex preview URL so the picture is reachable before the subdomain
+  // is registered (subdomain DNS gets set up only after the first build).
   for (const img of images) {
-    const text = `${IMAGE_DRAFT_MARKER}${img.url}]`
+    const previewUrl = sitePreviewUrl(site.slug, img.storagePath)
+    const text = `${IMAGE_DRAFT_MARKER}${previewUrl}]`
     await emit({ type: 'reply', text, intent: 'chat' })
     await appendAssistantOnly(sessionKey, text).catch(() => {})
   }
@@ -420,9 +423,12 @@ export async function POST(req: NextRequest) {
         return null
       })
       const reply = site
-        ? `Alles klar, ich habe deinen Entwurf veröffentlicht.\n\n${sitePublicUrl(site.slug)}`
+        ? 'Alles klar, ich habe deinen Entwurf veröffentlicht.'
         : PUBLISH_MISSING_DRAFT_REPLY
-      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
+      const persistedReply = site
+        ? `${reply}\n[ROMY_SITE:${sitePublicUrl(site.slug)}]`
+        : reply
+      await appendTurn(sessionKey, loggedUserMessage, persistedReply).catch(() => {})
       await emit({
         type: 'final',
         text: reply,
@@ -623,7 +629,10 @@ export async function POST(req: NextRequest) {
       const reply = [bodyText, imageFollowUp, publishHint]
         .filter(Boolean)
         .join('\n\n')
-      await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
+      const persistedReply = coderResult.site_url
+        ? `${reply}\n[ROMY_SITE:${coderResult.site_url}]`
+        : reply
+      await appendTurn(sessionKey, loggedUserMessage, persistedReply).catch(() => {})
       await emit({
         type: 'final',
         text: reply,

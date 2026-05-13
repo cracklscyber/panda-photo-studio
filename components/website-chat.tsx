@@ -60,11 +60,18 @@ function parseAssistantMessage(content: string): {
     text = text.replace(quickRe, '').trim()
   }
 
-  const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.com\/(?:site\/)?[a-z0-9-]+/i
-  const siteMatch = text.match(siteUrlRe)
-  const siteUrl = siteMatch ? siteMatch[0] : undefined
-  if (siteUrl) {
-    text = text.replace(siteUrl, '').trim()
+  const siteMarkerRe = /\[ROMY_SITE:([^\]]+)\]/
+  const siteMarkerMatch = text.match(siteMarkerRe)
+  let siteUrl: string | undefined = siteMarkerMatch ? siteMarkerMatch[1] : undefined
+  if (siteMarkerMatch) {
+    text = text.replace(siteMarkerRe, '').trim()
+  } else {
+    const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.com\/(?:site\/)?[a-z0-9-]+/i
+    const siteMatch = text.match(siteUrlRe)
+    if (siteMatch) {
+      siteUrl = siteMatch[0]
+      text = text.replace(siteMatch[0], '').trim()
+    }
   }
 
   text = text.replace(/\n{3,}/g, '\n\n').trim()
