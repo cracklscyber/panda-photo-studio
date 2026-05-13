@@ -7,6 +7,7 @@ import {
   clearAdminCookie,
   verifyPassword,
 } from '@/lib/admin-auth'
+import { displayPerson, countGeneratedImages } from '@/lib/admin-display'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,7 @@ interface ConvoRow {
   phone: string
   messages: ChatMessage[] | unknown
   updated_at: string
+  created_at: string | null
 }
 
 interface SiteRow {
@@ -86,30 +88,47 @@ export default async function AdminPage({
 
   if (!authed) {
     return (
-      <main className="min-h-screen bg-neutral-50 flex items-center justify-center px-6">
-        <form
-          action={login}
-          className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm"
-        >
-          <h1 className="mb-1 text-xl font-semibold tracking-tight">Romy Admin</h1>
-          <p className="mb-6 text-sm text-neutral-500">Passwort eingeben.</p>
-          <input
-            name="password"
-            type="password"
-            autoFocus
-            placeholder="Passwort"
-            className="mb-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+      <main className="relative min-h-screen overflow-hidden bg-[#f5efe2] text-[#1a1714]">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.5]"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 20% 10%, rgba(33,230,107,0.18), transparent 45%), radial-gradient(circle at 80% 90%, rgba(26,23,20,0.10), transparent 50%)',
+          }}
+        />
+        <div className="relative mx-auto flex min-h-screen max-w-md items-center justify-center px-6">
+          <form
+            action={login}
+            className="w-full rounded-3xl border border-[#1a1714]/8 bg-white/70 p-10 shadow-[0_24px_60px_-24px_rgba(26,23,20,0.25)] backdrop-blur-xl"
           >
-            Login
-          </button>
-          {sp.e && (
-            <p className="mt-3 text-xs text-red-600">Falsches Passwort.</p>
-          )}
-        </form>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#1a1714]/55">
+              Romy
+            </p>
+            <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-medium leading-none tracking-tight">
+              Admin
+            </h1>
+            <p className="mt-4 text-sm text-[#1a1714]/60">
+              Passwort eingeben, um fortzufahren.
+            </p>
+            <input
+              name="password"
+              type="password"
+              autoFocus
+              placeholder="Passwort"
+              className="mt-7 w-full rounded-xl border border-[#1a1714]/15 bg-white/80 px-4 py-3 text-sm text-[#1a1714] placeholder:text-[#1a1714]/40 focus:border-[#1a1714] focus:outline-none focus:ring-2 focus:ring-[#1a1714]/10"
+            />
+            <button
+              type="submit"
+              className="mt-3 w-full rounded-xl bg-[#1a1714] px-4 py-3 text-sm font-semibold text-[#f5efe2] shadow-[0_8px_24px_-12px_rgba(26,23,20,0.5)] transition hover:bg-[#2a2522]"
+            >
+              Anmelden
+            </button>
+            {sp.e && (
+              <p className="mt-4 text-xs text-red-600">Falsches Passwort.</p>
+            )}
+          </form>
+        </div>
       </main>
     )
   }
@@ -122,7 +141,7 @@ export default async function AdminPage({
   const [convosRes, sitesRes, buildsRes, customersRes] = await Promise.all([
     sb
       .from('romy_conversations')
-      .select('phone, messages, updated_at')
+      .select('phone, messages, updated_at, created_at')
       .order('updated_at', { ascending: false })
       .limit(200),
     sb
@@ -153,6 +172,28 @@ export default async function AdminPage({
     costByPhone.set(b.phone, cur)
   }
 
+  // Stable anonymous numbering: order all phones by oldest activity first
+  // (created_at, falling back to updated_at) so the same session always gets
+  // the same User N across reloads.
+  const anonymousNumberByPhone = new Map<string, number>()
+  const numberingOrder = convos
+    .filter((c) => c.phone && c.phone !== '__hook__')
+    .map((c) => ({
+      phone: c.phone,
+      seenAt: c.created_at || c.updated_at,
+    }))
+    .sort(
+      (a, b) => new Date(a.seenAt).getTime() - new Date(b.seenAt).getTime()
+    )
+  let nextNumber = 1
+  for (const entry of numberingOrder) {
+    const cust = customerBySession.get(entry.phone)
+    const hasIdentity = !!(cust?.name?.trim() || cust?.email?.trim())
+    const looksLikePhone = /^\+?\d{6,}$/.test(entry.phone.replace(/^web:/, ''))
+    if (hasIdentity || looksLikePhone) continue
+    anonymousNumberByPhone.set(entry.phone, nextNumber++)
+  }
+
   const rows = convos
     .filter((c) => c.phone && c.phone !== '__hook__')
     .map((c) => {
@@ -161,6 +202,13 @@ export default async function AdminPage({
       const site = siteByPhone.get(c.phone)
       const customer = customerBySession.get(c.phone)
       const cost = costByPhone.get(c.phone) || { total: 0, count: 0 }
+      const images = countGeneratedImages(messages)
+      const person = displayPerson({
+        phone: c.phone,
+        customerName: customer?.name,
+        customerEmail: customer?.email,
+        anonymousNumber: anonymousNumberByPhone.get(c.phone) ?? null,
+      })
       return {
         phone: c.phone,
         updated_at: c.updated_at,
@@ -169,6 +217,8 @@ export default async function AdminPage({
         site,
         customer,
         cost,
+        images,
+        person,
         live: isLive(c.updated_at),
       }
     })
@@ -177,6 +227,10 @@ export default async function AdminPage({
   const callbackPendingCount = rows.filter(
     (r) => r.site?.callback_requested_at && !r.site?.paid
   ).length
+  const totalImages = rows.reduce((s, r) => s + r.images.total, 0)
+  const totalBuilds = rows.reduce((s, r) => s + r.cost.count, 0)
+  const totalCost = rows.reduce((s, r) => s + r.cost.total, 0)
+  const registeredCount = rows.filter((r) => r.customer?.auth_user_id).length
 
   rows.sort((a, b) => {
     const aPending = a.site?.callback_requested_at && !a.site?.paid ? 1 : 0
@@ -186,199 +240,312 @@ export default async function AdminPage({
   })
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Romy Admin</h1>
-            <p className="text-xs text-neutral-500">
-              {rows.length} Konversation{rows.length === 1 ? '' : 'en'} •{' '}
-              <span className="font-medium text-emerald-600">
-                {liveCount} aktiv jetzt
-              </span>
-              {callbackPendingCount > 0 && (
-                <>
-                  {' '}
-                  •{' '}
-                  <span className="font-medium text-orange-600">
-                    {callbackPendingCount} Anruf offen
-                  </span>
-                </>
-              )}
+    <main className="relative min-h-screen bg-[#f5efe2] text-[#1a1714]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[440px] opacity-60"
+        style={{
+          backgroundImage:
+            'radial-gradient(ellipse at 15% 0%, rgba(33,230,107,0.14), transparent 55%), radial-gradient(ellipse at 85% 0%, rgba(26,23,20,0.06), transparent 60%)',
+        }}
+      />
+
+      <header className="relative">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-10">
+          <div className="flex items-baseline gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#1a1714]/55">
+              Romy
+            </p>
+            <span className="h-px w-8 bg-[#1a1714]/20" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#1a1714]/55">
+              Admin
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Link
               href="/admin/todos"
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+              className="rounded-full border border-[#1a1714]/12 bg-white/60 px-4 py-1.5 text-xs font-medium text-[#1a1714]/75 backdrop-blur transition hover:border-[#1a1714]/25 hover:bg-white"
             >
               Todos
             </Link>
             <Link
               href="/admin"
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+              className="rounded-full border border-[#1a1714]/12 bg-white/60 px-4 py-1.5 text-xs font-medium text-[#1a1714]/75 backdrop-blur transition hover:border-[#1a1714]/25 hover:bg-white"
             >
               Aktualisieren
             </Link>
             <form action={logout}>
               <button
                 type="submit"
-                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+                className="rounded-full border border-[#1a1714]/12 bg-white/60 px-4 py-1.5 text-xs font-medium text-[#1a1714]/75 backdrop-blur transition hover:border-[#1a1714]/25 hover:bg-white"
               >
                 Logout
               </button>
             </form>
           </div>
         </div>
+
+        <div className="mx-auto max-w-6xl px-6 pt-10">
+          <h1 className="font-[family-name:var(--font-display)] text-[44px] font-medium leading-[1.05] tracking-[-0.015em] sm:text-[56px]">
+            Heute auf Romy.
+          </h1>
+          <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[#1a1714]/65">
+            {rows.length} Gespräch{rows.length === 1 ? '' : 'e'} in den letzten
+            Tagen, {liveCount > 0 ? `${liveCount} gerade aktiv` : 'aktuell ruhig'}
+            {callbackPendingCount > 0
+              ? `, ${callbackPendingCount} ${callbackPendingCount === 1 ? 'Anruf wartet' : 'Anrufe warten'}`
+              : ''}
+            .
+          </p>
+        </div>
+
+        <div className="mx-auto mt-10 grid max-w-6xl grid-cols-2 gap-3 px-6 sm:grid-cols-4">
+          <StatCard label="Gespräche" value={rows.length} hint={`${registeredCount} mit Konto`} />
+          <StatCard
+            label="Jetzt aktiv"
+            value={liveCount}
+            hint="letzte 5 Min"
+            accent={liveCount > 0 ? '#21a356' : undefined}
+          />
+          <StatCard
+            label="Bilder generiert"
+            value={totalImages}
+            hint="Drafts + Bestätigt"
+          />
+          <StatCard
+            label="Site-Builds"
+            value={totalBuilds}
+            hint={`$${totalCost.toFixed(2)} gesamt`}
+          />
+        </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-6 py-8">
+      <section className="relative mx-auto max-w-6xl px-6 py-12">
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="font-[family-name:var(--font-display)] text-xl font-medium tracking-tight">
+            Konversationen
+          </h2>
+          {callbackPendingCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1a1714] px-3 py-1 text-[11px] font-medium text-[#f5efe2]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#ffb648]" />
+              {callbackPendingCount} {callbackPendingCount === 1 ? 'Anruf wartet' : 'Anrufe warten'}
+            </span>
+          )}
+        </div>
+
         {rows.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+          <div className="rounded-2xl border border-dashed border-[#1a1714]/15 bg-white/40 px-6 py-16 text-center text-sm text-[#1a1714]/60">
             Noch keine Konversationen.
-          </p>
+          </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Session</th>
-                  <th className="px-4 py-3 font-medium">Kunde</th>
-                  <th className="px-4 py-3 font-medium">Geschäft</th>
-                  <th className="px-4 py-3 font-medium">Letzte Nachricht</th>
-                  <th className="px-4 py-3 font-medium">Aktiv</th>
-                  <th className="px-4 py-3 font-medium">Quota</th>
-                  <th className="px-4 py-3 font-medium text-right">Msgs</th>
-                  <th className="px-4 py-3 font-medium text-right">Builds</th>
-                  <th className="px-4 py-3 font-medium text-right">Cost</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {rows.map((r) => (
-                  <tr
-                    key={r.phone}
-                    className="cursor-pointer hover:bg-neutral-50"
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="block"
-                      >
+          <div className="overflow-hidden rounded-2xl border border-[#1a1714]/8 bg-white shadow-[0_24px_60px_-30px_rgba(26,23,20,0.18)]">
+            <div className="grid grid-cols-[16px_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] gap-x-6 border-b border-[#1a1714]/8 bg-[#faf6ec] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#1a1714]/45">
+              <span />
+              <span>Person</span>
+              <span>Geschäft</span>
+              <span>Letzte Nachricht</span>
+              <span className="text-right">Aktivität</span>
+            </div>
+            <ul className="divide-y divide-[#1a1714]/6">
+              {rows.map((r) => {
+                const pending =
+                  r.site?.callback_requested_at && !r.site?.paid
+                return (
+                  <li key={r.phone}>
+                    <Link
+                      href={`/admin/${encodeURIComponent(r.phone)}`}
+                      className="group grid grid-cols-[16px_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-x-6 px-6 py-4 transition hover:bg-[#faf6ec]/60"
+                    >
+                      <span className="flex h-4 items-center">
                         {r.live ? (
-                          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                          <span className="relative flex h-2 w-2">
+                            <span className="absolute inset-0 animate-ping rounded-full bg-[#21e66b] opacity-60" />
+                            <span className="relative h-2 w-2 rounded-full bg-[#21a356]" />
+                          </span>
                         ) : (
-                          <span className="inline-flex h-2 w-2 rounded-full bg-neutral-300" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#1a1714]/15" />
                         )}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs">
-                      <Link
-                        href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="block hover:text-neutral-900"
-                      >
-                        {r.phone}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="block"
-                      >
-                        <span className="block truncate font-medium">
-                          {r.customer?.name || r.customer?.email || '—'}
-                        </span>
-                        {r.customer?.email && (
-                          <span className="block truncate text-xs text-neutral-500">
-                            {r.customer.email}
+                      </span>
+
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span
+                            className={`truncate text-[15px] font-medium ${r.person.isAnonymous ? 'text-[#1a1714]/85' : 'text-[#1a1714]'}`}
+                          >
+                            {r.person.primary}
                           </span>
-                        )}
-                        {r.customer?.auth_user_id ? (
-                          <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
-                            Konto
-                          </span>
-                        ) : r.customer?.first_build_at ? (
-                          <span className="mt-1 inline-flex rounded-full bg-yellow-50 px-2 py-0.5 text-[11px] text-yellow-700">
-                            Konto fehlt
-                          </span>
-                        ) : null}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="block"
-                      >
+                          {r.person.secondary && !r.person.isAnonymous && (
+                            <span className="truncate text-[12px] text-[#1a1714]/45">
+                              {r.person.secondary}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[12px] text-[#1a1714]/55">
+                          {r.customer?.auth_user_id ? (
+                            <span className="inline-flex items-center gap-1 text-[#21a356]">
+                              <span className="h-1 w-1 rounded-full bg-[#21a356]" />
+                              Konto
+                            </span>
+                          ) : r.customer?.first_build_at ? (
+                            <span className="inline-flex items-center gap-1 text-[#b58200]">
+                              <span className="h-1 w-1 rounded-full bg-[#d69c1e]" />
+                              Konto fehlt
+                            </span>
+                          ) : r.person.isWhatsapp ? (
+                            <span className="text-[#1a1714]/45">WhatsApp</span>
+                          ) : (
+                            <span className="text-[#1a1714]/45">Anonym</span>
+                          )}
+                          <span className="text-[#1a1714]/20">·</span>
+                          <span>{r.messageCount} Nachrichten</span>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0">
                         {r.site?.business_name ? (
-                          <span className="font-medium">
-                            {r.site.business_name}
-                          </span>
+                          <>
+                            <div className="truncate text-[14px] font-medium text-[#1a1714]">
+                              {r.site.business_name}
+                            </div>
+                            {r.site?.slug && (
+                              <div className="truncate font-mono text-[11px] text-[#1a1714]/45">
+                                {r.site.slug}.halloromy.com
+                              </div>
+                            )}
+                          </>
                         ) : (
-                          <span className="text-neutral-400">—</span>
-                        )}
-                        {r.site?.slug && (
-                          <span className="ml-2 text-xs text-neutral-400">
-                            {r.site.slug}.halloromy.com
+                          <span className="text-[13px] text-[#1a1714]/35">
+                            noch ohne Geschäft
                           </span>
                         )}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="flex max-w-[280px] items-baseline gap-1"
-                      >
-                        <span
-                          className={`shrink-0 text-xs font-medium ${r.last?.role === 'user' ? 'text-blue-600' : 'text-neutral-500'}`}
-                        >
-                          {r.last?.role === 'user' ? 'User:' : 'Romy:'}
-                        </span>
-                        <span className="truncate text-neutral-700">
-                          {r.last?.content || '—'}
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-500">
-                      <Link href={`/admin/${encodeURIComponent(r.phone)}`}>
-                        {formatRelative(r.updated_at)}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      <Link
-                        href={`/admin/${encodeURIComponent(r.phone)}`}
-                        className="block"
-                      >
-                        {r.site?.paid ? (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
-                            Paid
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span
+                            className={`shrink-0 text-[11px] font-semibold uppercase tracking-wider ${r.last?.role === 'user' ? 'text-[#1a1714]/80' : 'text-[#21a356]'}`}
+                          >
+                            {r.last?.role === 'user' ? 'User' : 'Romy'}
                           </span>
-                        ) : r.site?.callback_requested_at ? (
-                          <span className="rounded-full bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
-                            Anruf offen
+                          <span className="truncate text-[13px] text-[#1a1714]/70">
+                            {cleanPreview(r.last?.content) || '—'}
                           </span>
-                        ) : (
-                          <span className="text-neutral-500">
-                            {r.site?.builds_used ?? 0}/{FREE_LIMIT}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 whitespace-nowrap text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-[13px] font-medium tabular-nums text-[#1a1714]/80">
+                            {formatRelative(r.updated_at)}
                           </span>
-                        )}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs text-neutral-600">
-                      {r.messageCount}
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs text-neutral-600">
-                      {r.cost.count}
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs text-neutral-600">
-                      ${r.cost.total.toFixed(3)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#1a1714]/50">
+                            {r.images.total > 0 && (
+                              <Pill>
+                                <ImageIcon /> {r.images.total}
+                              </Pill>
+                            )}
+                            {r.cost.count > 0 && (
+                              <Pill>{r.cost.count} Build{r.cost.count === 1 ? '' : 's'}</Pill>
+                            )}
+                            {pending ? (
+                              <Pill tone="warn">Anruf offen</Pill>
+                            ) : r.site?.paid ? (
+                              <Pill tone="ok">Paid</Pill>
+                            ) : (
+                              <Pill>
+                                {r.site?.builds_used ?? 0}/{FREE_LIMIT}
+                              </Pill>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
           </div>
         )}
-      </div>
+      </section>
     </main>
   )
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  accent,
+}: {
+  label: string
+  value: number | string
+  hint?: string
+  accent?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-[#1a1714]/8 bg-white/70 px-5 py-4 backdrop-blur-sm">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1a1714]/45">
+        {label}
+      </div>
+      <div
+        className="mt-2 font-[family-name:var(--font-display)] text-[34px] font-medium leading-none tracking-tight tabular-nums"
+        style={accent ? { color: accent } : undefined}
+      >
+        {value}
+      </div>
+      {hint && (
+        <div className="mt-1.5 text-[11px] text-[#1a1714]/50">{hint}</div>
+      )}
+    </div>
+  )
+}
+
+function Pill({
+  children,
+  tone = 'neutral',
+}: {
+  children: React.ReactNode
+  tone?: 'neutral' | 'ok' | 'warn'
+}) {
+  const styles =
+    tone === 'ok'
+      ? 'bg-[#21a356]/10 text-[#21a356]'
+      : tone === 'warn'
+        ? 'bg-[#ffb648]/15 text-[#b58200]'
+        : 'bg-[#1a1714]/[0.06] text-[#1a1714]/65'
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${styles}`}
+    >
+      {children}
+    </span>
+  )
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="9" cy="9" r="1.6" />
+      <path d="m21 15-5-5L5 21" />
+    </svg>
+  )
+}
+
+function cleanPreview(content: string | undefined): string {
+  if (!content) return ''
+  return content
+    .replace(/\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED):[^\]]+\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

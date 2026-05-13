@@ -3,7 +3,6 @@ import {
   listSiteFiles,
   downloadSiteFile,
   uploadSiteFile,
-  sitePublicUrl,
   sitePreviewUrl,
 } from './supabase-storage'
 import { extractConfirmedImageUrls } from './romy-image-intent'
@@ -14,7 +13,10 @@ const ROMY_E2B_TEMPLATE = process.env.ROMY_E2B_TEMPLATE?.trim() || ''
 const AGENT_TIMEOUT_MS = 285_000
 const NPM_INSTALL_TIMEOUT_MS = 90_000
 const AGENT_MAX_TURNS = 8
-const ALLOW_TEMPLATE_FALLBACK = process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
+const REQUIRE_CLAUDE_FRONTEND_DESIGN =
+  process.env.ROMY_REQUIRE_CLAUDE_FRONTEND_DESIGN !== '0'
+const ALLOW_TEMPLATE_FALLBACK =
+  !REQUIRE_CLAUDE_FRONTEND_DESIGN && process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
 
 const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Romy, einer Chat-Assistentin, die Websites für lokale Geschäfte baut. Arbeite im cwd mit Read, Write, Edit, Glob, Grep. Haupt-Datei ist immer index.html. Output: in sich geschlossenes HTML, mobile-first, modernes CSS, Google Fonts via <link> okay, keine Tailwind-CDN, kein React/Next, keine Base64-Bilder, keine relativen ../-Pfade, Deutsch falls nicht anders gewünscht.
 
@@ -23,6 +25,19 @@ Du MUSST das Write-Tool benutzen, um index.html im cwd zu erstellen (bzw. Edit-T
 
 ## Grundauftrag
 Die Seite soll individuell programmiert wirken, nicht wie ein Baukasten-Template. Leite Layout, Bildwahl, Text und Abschnitte aus Branche, Stilwunsch und Kundendaten ab. Keine immer gleiche Struktur mit nur anderem Namen.
+
+## HARTE DESIGN-REGEL — Claude Frontend Design
+Du MUSST das Claude Frontend Design verwenden. Das ist keine optionale Inspiration, sondern der verbindliche visuelle Qualitätsstandard für jeden Entwurf.
+
+Mit "Claude Frontend Design" ist gemeint:
+- Sehr hochwertiges, individuell komponiertes Frontend, das wie von einem starken Produktdesigner gebaut wirkt.
+- Klare visuelle Hierarchie, großzügiger Weißraum, präzise Typografie, saubere Section-Komposition und stimmige Abstände.
+- Keine generischen Baukasten-Seiten, keine austauschbaren Standard-Landingpages, keine lieblosen Cards aneinandergereiht.
+- Jede Branche bekommt eine eigene visuelle Richtung: Layout, Farben, Bildsprache, Typografie und Ton passen zum Geschäft.
+- Mobile zuerst, aber Desktop muss ebenfalls bewusst gestaltet wirken.
+- Du darfst kreativ sein, solange das Ergebnis ruhig, hochwertig, nutzbar und vertrauenswürdig bleibt.
+
+Wenn andere Regeln mit dieser Design-Regel kollidieren, gewinnt diese Design-Regel, solange Sicherheit, Bildquellen und technische Ausgabe weiterhin eingehalten werden.
 
 ## Stell KEINE Rückfragen vor dem Build
 Du bekommst Branche und ggf. Stilwunsch — daraus baust du selbständig mit guten Defaults:
@@ -951,7 +966,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       ok,
       reply,
       files_changed: uploaded,
-      site_url: isFirstBuild ? sitePreviewUrl(slug) : sitePublicUrl(slug),
+      site_url: sitePreviewUrl(slug),
       duration_ms: Date.now() - t0,
       cost_usd: parsed.result?.total_cost_usd ?? null,
       sandbox_id: sandbox.sandboxId,
@@ -989,7 +1004,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       ok: false,
       reply: 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.',
       files_changed: [],
-      site_url: isFirstBuild ? sitePreviewUrl(slug) : sitePublicUrl(slug),
+      site_url: sitePreviewUrl(slug),
       duration_ms: Date.now() - t0,
       cost_usd: null,
       sandbox_id: sandbox?.sandboxId || null,

@@ -20,7 +20,7 @@ export default function AGB() {
 
         <Section title="1. Geltungsbereich">
           <p>
-            Diese Nutzungsbedingungen gelten für die Nutzung des Website-Chat-Service &quot;Romy&quot; sowie der Website halloromy.com, betrieben von Zoe Christiansen, Steinstraße 15, 10119 Berlin (&quot;Anbieterin&quot;).
+            Diese Nutzungsbedingungen gelten für die Nutzung des Website-Chat-Service &quot;Romy&quot; sowie der Website halloromy.com, betrieben von ROMIAI, Berlin (&quot;Anbieterin&quot;).
           </p>
         </Section>
 

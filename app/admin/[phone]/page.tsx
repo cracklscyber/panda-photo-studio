@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { isAdminAuthed } from '@/lib/admin-auth'
 import { setPaid, resetQuota } from '@/lib/romy-sites'
+import { displayPerson, countGeneratedImages } from '@/lib/admin-display'
 
 const FREE_LIMIT = 4
 
@@ -111,21 +112,28 @@ export default async function ConvoPage({
     process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   )
 
-  const [convoRes, siteRes, buildsRes, customerRes] = await Promise.all([
-    sb
-      .from('romy_conversations')
-      .select('phone, messages, updated_at')
-      .eq('phone', phone)
-      .maybeSingle(),
-    sb.from('romy_sites').select('*').eq('phone', phone).maybeSingle(),
-    sb
-      .from('romy_build_logs')
-      .select('ok, cost_usd, duration_ms, was_warm, user_message, created_at')
-      .eq('phone', phone)
-      .order('created_at', { ascending: false })
-      .limit(20),
-    sb.from('romy_customers').select('*').eq('session_id', phone).maybeSingle(),
-  ])
+  const [convoRes, siteRes, buildsRes, customerRes, allConvosRes, allCustomersRes] =
+    await Promise.all([
+      sb
+        .from('romy_conversations')
+        .select('phone, messages, updated_at')
+        .eq('phone', phone)
+        .maybeSingle(),
+      sb.from('romy_sites').select('*').eq('phone', phone).maybeSingle(),
+      sb
+        .from('romy_build_logs')
+        .select('ok, cost_usd, duration_ms, was_warm, user_message, created_at')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      sb.from('romy_customers').select('*').eq('session_id', phone).maybeSingle(),
+      sb
+        .from('romy_conversations')
+        .select('phone, created_at, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(500),
+      sb.from('romy_customers').select('session_id, name, email'),
+    ])
 
   const messages =
     (Array.isArray(convoRes.data?.messages)
@@ -135,24 +143,72 @@ export default async function ConvoPage({
   const builds: BuildLogRow[] = (buildsRes.data as BuildLogRow[]) || []
   const customer = (customerRes.data as CustomerRow | null) || null
   const totalCost = builds.reduce((s, b) => s + (b.cost_usd || 0), 0)
+  const imageStats = countGeneratedImages(messages)
+
+  const allConvos =
+    (allConvosRes.data as Array<{
+      phone: string
+      created_at: string | null
+      updated_at: string
+    }> | null) || []
+  const allCustomers =
+    (allCustomersRes.data as Array<{
+      session_id: string
+      name: string | null
+      email: string | null
+    }> | null) || []
+  const identityBySession = new Map(allCustomers.map((c) => [c.session_id, c]))
+  let anonymousNumber: number | null = null
+  let counter = 0
+  const ordered = [...allConvos].sort(
+    (a, b) =>
+      new Date(a.created_at || a.updated_at).getTime() -
+      new Date(b.created_at || b.updated_at).getTime()
+  )
+  for (const c of ordered) {
+    if (!c.phone || c.phone === '__hook__') continue
+    const id = identityBySession.get(c.phone)
+    const hasIdentity = !!(id?.name?.trim() || id?.email?.trim())
+    const looksLikePhone = /^\+?\d{6,}$/.test(c.phone.replace(/^web:/, ''))
+    if (hasIdentity || looksLikePhone) continue
+    counter += 1
+    if (c.phone === phone) {
+      anonymousNumber = counter
+      break
+    }
+  }
+
+  const person = displayPerson({
+    phone,
+    customerName: customer?.name,
+    customerEmail: customer?.email,
+    anonymousNumber,
+  })
+  const headerTitle = site?.business_name || person.primary
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
+    <main className="min-h-screen bg-[#f5efe2] text-[#1a1714]">
+      <header className="border-b border-[#1a1714]/8 bg-[#f5efe2]/80 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-4">
             <Link
               href="/admin"
-              className="text-sm text-neutral-500 hover:text-neutral-900"
+              className="text-sm text-[#1a1714]/55 transition hover:text-[#1a1714]"
             >
               ← Übersicht
             </Link>
-            <div className="h-4 w-px bg-neutral-200" />
+            <div className="h-5 w-px bg-[#1a1714]/15" />
             <div>
-              <h1 className="text-base font-semibold">
-                {site?.business_name || phone}
+              <h1 className="font-[family-name:var(--font-display)] text-xl font-medium tracking-tight">
+                {headerTitle}
               </h1>
-              <p className="font-mono text-xs text-neutral-500">{phone}</p>
+              <p className="mt-0.5 text-xs text-[#1a1714]/50">
+                {person.isAnonymous
+                  ? 'Anonym — kein Konto'
+                  : person.isWhatsapp
+                    ? `WhatsApp · ${person.primary}`
+                    : person.secondary || 'Registriert'}
+              </p>
             </div>
           </div>
           {site?.slug && (
@@ -160,7 +216,7 @@ export default async function ConvoPage({
               href={`https://${site.slug}.halloromy.com`}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+              className="rounded-full border border-[#1a1714]/12 bg-white/70 px-4 py-1.5 text-xs font-medium text-[#1a1714]/80 transition hover:border-[#1a1714]/25 hover:bg-white"
             >
               Site öffnen ↗
             </a>
@@ -370,9 +426,20 @@ export default async function ConvoPage({
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-500">
               Builds ({builds.length})
             </h3>
-            <p className="mb-3 text-sm">
+            <p className="mb-1 text-sm">
               Total Cost:{' '}
               <span className="font-medium">${totalCost.toFixed(3)}</span>
+            </p>
+            <p className="mb-3 text-xs text-neutral-500">
+              Bilder generiert:{' '}
+              <span className="font-medium text-neutral-700">
+                {imageStats.total}
+              </span>
+              {imageStats.total > 0 && (
+                <span className="ml-1 text-neutral-400">
+                  ({imageStats.drafts} Drafts, {imageStats.confirmed} bestätigt)
+                </span>
+              )}
             </p>
             <div className="space-y-2">
               {builds.length === 0 && (

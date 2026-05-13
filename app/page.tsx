@@ -99,9 +99,6 @@ export default function Home() {
               ))}
             </ul>
 
-            <p className="mt-7 text-xs text-[#1a1714]/45 lg:text-left">
-              Made with care in Berlin · DSGVO-konform · Hosting in Deutschland
-            </p>
           </div>
 
           <div

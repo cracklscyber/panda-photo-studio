@@ -13,6 +13,7 @@ import {
 } from '@/lib/romy-sites'
 import { loadHistory, appendTurn } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
+import { downloadSiteFile, sitePreviewUrl } from '@/lib/supabase-storage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -217,7 +218,8 @@ async function processMessage(message: IncomingMessage) {
     return
   }
 
-  const ack = site.last_sandbox_id ? ACK_FOLLOWUP : ACK_FIRST
+  const isFirstBuild = !site.last_sandbox_id
+  const ack = isFirstBuild ? ACK_FIRST : ACK_FOLLOWUP
   await sendWhatsAppMessage(metaFrom, ack).catch((err) => {
     console.error('ack send failed:', err)
   })
@@ -227,11 +229,8 @@ async function processMessage(message: IncomingMessage) {
     userMessage: text || 'Hallo',
     imageUrl,
     history,
+    isFirstBuild,
   })
-
-  if (coderResult.sandbox_id) {
-    await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
-  }
 
   await logBuild({
     phone,
@@ -244,26 +243,44 @@ async function processMessage(message: IncomingMessage) {
   }).catch((err) => console.error('logBuild failed:', err))
 
   if (coderResult.ok) {
+    const indexHtml = await downloadSiteFile(site.slug, 'index.html').catch((err) => {
+      console.error('downloadSiteFile index.html after WhatsApp build failed:', err)
+      return null
+    })
+    if (!indexHtml) {
+      const failureReply =
+        'Tut mir wirklich sehr leid, da ist gerade was schiefgelaufen. Ich hab das meinem Team gemeldet. Du musst nichts weiter machen.'
+      await sendWhatsAppMessage(metaFrom, failureReply)
+      await appendTurn(phone, text || '[Bild]', failureReply).catch(() => {})
+      return
+    }
+    if (coderResult.sandbox_id) {
+      await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
+    }
     await incrementBuildCount(phone).catch((err) =>
       console.error('incrementBuildCount failed:', err)
     )
     const body = (coderResult.reply || 'Fertig!').trim()
+    const previewUrl = sitePreviewUrl(site.slug)
     const sent = await sendWhatsAppCTA(
       metaFrom,
       body,
-      'Website ansehen',
-      coderResult.site_url
+      'Entwurf ansehen',
+      previewUrl
     ).catch((err) => {
       console.error('cta send failed, falling back to text:', err)
       return false
     })
     if (!sent) {
-      await sendWhatsAppMessage(metaFrom, `${body}\n\n${coderResult.site_url}`)
+      await sendWhatsAppMessage(
+        metaFrom,
+        `${body}\n\nDein Entwurf ist fertig. Der Vorschau-Button konnte gerade nicht geladen werden, ich leite das an mein Team weiter.`
+      )
     }
     await appendTurn(
       phone,
       text || '[Bild]',
-      `${body}\n${coderResult.site_url}`
+      `${body}\n[ROMY_SITE:${previewUrl}]`
     ).catch(() => {})
     return
   }

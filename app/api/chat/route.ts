@@ -58,11 +58,11 @@ const ONBOARDING_JA_REPLY =
 const ONBOARDING_NEIN_REPLY =
   'Alles klar, melde dich einfach wenn du soweit bist.'
 const IMAGE_INTRO_QUESTION =
-  'Alles klar. Ich generiere dir jetzt erstmal drei Bilder, deine eigenen kannst du später hinzufügen. Hast du konkrete Wünsche?'
+  'Ich generiere dir gleich drei Bilder für deinen ersten Entwurf — die sind erstmal als Platzhalter gedacht, damit das Layout steht. Feinheiten und eigene Fotos kommen ganz zum Schluss. Hast du eine konkrete Vorstellung, oder soll ich einfach loslegen?'
 const WISH_PROMPT =
   'Erzähl mir kurz, was dir vorschwebt. Stimmung, Farben, was darauf zu sehen sein soll.'
 const POST_IMAGES_GENERATING =
-  'Geht klar, ich male dir gerade drei Vorschläge. Einen Moment.'
+  'Geht klar, ich generiere dir gerade drei Vorschläge. Einen Moment.'
 const POST_IMAGES_BUILD_QUESTION =
   'Damit kann ich loslegen. Soll ich jetzt deine Seite bauen?'
 const POST_IMAGES_FAILED =
@@ -74,6 +74,8 @@ const QUICK_REPLIES_JA_NEIN = ['Ja', 'Nein']
 
 const PUBLISH_MISSING_DRAFT_REPLY =
   'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
+
+type OnboardingStage = 'business_info' | 'image_intro' | 'image_wish' | 'build_confirm'
 
 function stripUrlsAndLiveWording(text: string, isFirstBuild: boolean): string {
   let cleaned = text
@@ -161,7 +163,10 @@ function previousAssistantAskedAboutImageWishes(
 ): boolean {
   const last = lastAssistant(history)
   if (!last) return false
-  return last.content.includes('Ich generiere dir jetzt erstmal drei Bilder')
+  return (
+    last.content.includes('Ich generiere dir gleich drei Bilder') ||
+    last.content.includes('Ich generiere dir jetzt erstmal drei Bilder')
+  )
 }
 
 function previousAssistantAskedForWish(
@@ -190,6 +195,93 @@ function previousAssistantAskedWhatToChange(
 
 function mentionsImages(text: string): boolean {
   return /\b(bild|bilder|foto|fotos|grafik|illustration|hero|aufnahme|aufnahmen|moodboard|langweilig|tristes?|öde|hässlich|schöner|besser|anders|neue?|andere?)\b/i.test(text)
+}
+
+// Catch-all: detect LLM-generated promises that images are being generated. Used
+// to rescue old sessions where the model said "Moment, ich generiere die Bilder"
+// without the state machine ever triggering generateImagesForBranche.
+function previousAssistantPromisedImageGen(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const last = lastAssistant(history)
+  if (!last) return false
+  // Already inside a managed step → don't double-trigger
+  if (last.content.includes('Geht klar, ich generiere dir gerade')) return false
+  if (last.content.includes('Damit kann ich loslegen')) return false
+  if (last.content.includes(IMAGE_DRAFT_MARKER)) return false
+  return /\b(moment[, .!]*\s*ich generiere|ich generiere die bilder|lass mich die bilder generier|gleich erscheinen|werden gerade generiert|ich male dir)\b/i.test(
+    last.content
+  )
+}
+
+function onboardingResumePrompt(stage: OnboardingStage): string {
+  if (stage === 'business_info') {
+    return 'Damit ich deinen Entwurf starten kann: Was machst du, wie heißt dein Unternehmen und in welcher Stadt bist du?'
+  }
+  if (stage === 'image_intro') {
+    return 'Zurück zu den Bildern: Hast du konkrete Wünsche für die Bildrichtung?'
+  }
+  if (stage === 'image_wish') {
+    return 'Welche Stimmung, Farben oder Motive stellst du dir für die Bilder vor?'
+  }
+  return 'Soll ich jetzt mit dem ersten Website-Entwurf loslegen?'
+}
+
+function onboardingDetourReply(
+  text: string,
+  stage: OnboardingStage
+): { text: string; bookingUrl?: string; quickReplies?: string[] } | null {
+  const lower = text.toLowerCase()
+  const looksLikeQuestion =
+    text.includes('?') ||
+    /\b(kann|geht|muss|wie|was|welche|welcher|welches|warum|domain|schrift|farbe|design|kost|preis|shop|buchung|technisch|funktioniert|empfiehlst|empfehlen|empfehlung)\b/i.test(text)
+  if (!looksLikeQuestion) return null
+
+  const resume = onboardingResumePrompt(stage)
+  const quickReplies = stage === 'image_intro' || stage === 'build_confirm' ? QUICK_REPLIES_JA_NEIN : undefined
+
+  if (/\b(domain|url|webadresse|adresse|de$|\.de|\.com|\.ai)\b/i.test(lower)) {
+    return {
+      text:
+        `Ja, eine eigene Domain ist möglich. Dafür vereinbaren wir am besten kurz einen Beratungstermin, damit sie sauber verbunden wird. Für den Entwurf nutzen wir erst mal eine Romy-Vorschau.\n\n${resume}`,
+      bookingUrl: CAL_BOOKING_URL,
+      quickReplies,
+    }
+  }
+
+  if (/\b(schrift|font|typografie|farbe|farben|design|look|stil|wirkt|empfiehlst|empfehlen|modern|edel|hochwertig|minimalistisch)\b/i.test(lower)) {
+    return {
+      text:
+        `Für die meisten lokalen Geschäfte wirkt eine ruhige, gut lesbare Sans-Schrift am besten. Wenn es etwas hochwertiger oder persönlicher wirken soll, nehme ich gern eine elegante Serif-Schrift für Überschriften und eine klare Sans-Schrift für den Rest. Farben würde ich aus deiner Branche und deinem Angebot ableiten, damit es stimmig wirkt.\n\n${resume}`,
+      quickReplies,
+    }
+  }
+
+  if (/\b(technisch|technik|hosting|host|server|einrichten|funktioniert|claude|code|frontend|backend|api)\b/i.test(lower)) {
+    return {
+      text:
+        `Du musst dich um die Technik nicht kümmern. Ich erstelle erst einen Entwurf, den du ansehen kannst, und danach können wir Inhalte, Design, Bilder und Domain in Ruhe sauber machen.\n\n${resume}`,
+      quickReplies,
+    }
+  }
+
+  if (/\b(kost|preis|abo|monat|bezahlen|zahlung|gratis|kostenlos)\b/i.test(lower)) {
+    return {
+      text:
+        `Romy ist gerade noch in der Beta, du kannst also erstmal kostenlos mit einem Entwurf starten. Wenn daraus eine laufend gepflegte Website werden soll, klären wir die Mitgliedschaft danach.\n\n${resume}`,
+      quickReplies,
+    }
+  }
+
+  if (/\b(shop|warenkorb|buchung|terminbuchung|newsletter|mehrsprachig|blog|login)\b/i.test(lower)) {
+    return {
+      text:
+        `Das ist je nach Funktion möglich oder kommt später dazu. Für den ersten Entwurf konzentriere ich mich auf eine klare Startseite mit Angebot, Bildern und Kontakt. Spezialfunktionen können wir danach gemeinsam einplanen.\n\n${resume}`,
+      quickReplies,
+    }
+  }
+
+  return null
 }
 
 function extractBusinessDescription(
@@ -453,7 +545,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Q2 just answered → Q3 (image-intro + wish question with Ja/Nein quick-replies)
-      if (previousAssistantAskedForBusinessInfo(history)) {
+    if (previousAssistantAskedForBusinessInfo(history)) {
+      const detour = onboardingDetourReply(text, 'business_info')
+      if (detour) {
+        await appendTurn(sessionKey, loggedUserMessage, detour.text).catch(() => {})
+        await emit({
+          type: 'reply',
+          text: detour.text,
+          intent: 'chat',
+          bookingUrl: detour.bookingUrl,
+          quickReplies: detour.quickReplies,
+        })
+        return
+      }
       const reply = IMAGE_INTRO_QUESTION
       await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})
       await emit({ type: 'reply', text: reply, intent: 'chat', quickReplies: QUICK_REPLIES_JA_NEIN })
@@ -462,6 +566,18 @@ export async function POST(req: NextRequest) {
 
     // Q3 answered → either ask for wish (Ja) or kick off image generation immediately (Nein/other)
     if (previousAssistantAskedAboutImageWishes(history)) {
+      const detour = onboardingDetourReply(text, 'image_intro')
+      if (detour) {
+        await appendTurn(sessionKey, loggedUserMessage, detour.text).catch(() => {})
+        await emit({
+          type: 'reply',
+          text: detour.text,
+          intent: 'chat',
+          bookingUrl: detour.bookingUrl,
+          quickReplies: detour.quickReplies,
+        })
+        return
+      }
       const onbAnswer = detectOnboardingAnswer(text)
       if (onbAnswer === 'ja') {
         await appendTurn(sessionKey, loggedUserMessage, WISH_PROMPT).catch(() => {})
@@ -482,6 +598,18 @@ export async function POST(req: NextRequest) {
 
     // User typed their concrete wish → generate images using description + wish
     if (previousAssistantAskedForWish(history)) {
+      const detour = onboardingDetourReply(text, 'image_wish')
+      if (detour) {
+        await appendTurn(sessionKey, loggedUserMessage, detour.text).catch(() => {})
+        await emit({
+          type: 'reply',
+          text: detour.text,
+          intent: 'chat',
+          bookingUrl: detour.bookingUrl,
+          quickReplies: detour.quickReplies,
+        })
+        return
+      }
       const branche = extractBusinessDescription(history) || text
       await runImageGenerationStep({
         sessionKey,
@@ -505,9 +633,35 @@ export async function POST(req: NextRequest) {
       // Non-image modification → treat as additional build instructions
     }
 
+    // Catch-all: LLM promised image generation (free-form, outside state machine)
+    // and the customer is now waiting for those images. Run the real generator.
+    if (previousAssistantPromisedImageGen(history)) {
+      const branche = extractBusinessDescription(history) || text
+      await runImageGenerationStep({
+        sessionKey,
+        loggedUserMessage,
+        branche,
+        extraPromptHint: text,
+        emit,
+      })
+      return
+    }
+
     // After images shown, Romy asked "Soll ich jetzt deine Seite bauen?"
     let routed: Awaited<ReturnType<typeof routeMessage>>
     if (previousAssistantAskedToBuildAfterImages(history)) {
+      const detour = onboardingDetourReply(text, 'build_confirm')
+      if (detour) {
+        await appendTurn(sessionKey, loggedUserMessage, detour.text).catch(() => {})
+        await emit({
+          type: 'reply',
+          text: detour.text,
+          intent: 'chat',
+          bookingUrl: detour.bookingUrl,
+          quickReplies: detour.quickReplies,
+        })
+        return
+      }
       const onbAnswer = detectOnboardingAnswer(text)
       if (onbAnswer === 'ja') {
         routed = { intent: 'build', classify_ms: 0 }

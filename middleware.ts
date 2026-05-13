@@ -4,7 +4,11 @@ export const config = {
   matcher: ['/((?!api/|_next/static|_next/image|favicon.ico).*)'],
 }
 
-const APEX = 'halloromy.com'
+const APEX = (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+  .trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/\/.*$/, '')
+  .toLowerCase()
 const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'app', 'mail', 'ftp'])
 
 function extractSlug(host: string | null): string | null {

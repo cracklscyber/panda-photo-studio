@@ -23,9 +23,8 @@ export default function Datenschutz() {
             Verantwortlich für die Datenverarbeitung auf dieser Website und im Zusammenhang mit dem Website-Chat „Romy" ist:
           </p>
           <p className="mt-3">
-            Zoe Christiansen<br />
-            Steinstraße 15<br />
-            10119 Berlin<br />
+            ROMIAI<br />
+            Berlin<br />
             Deutschland<br />
             E-Mail: <a href="mailto:halloromy.ai@gmail.com" className="underline">halloromy.ai@gmail.com</a>
           </p>

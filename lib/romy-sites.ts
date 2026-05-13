@@ -283,7 +283,7 @@ async function clearWarmMetaForSlug(slug: string): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!.trim()
   await fetch(
-    `${baseUrl}/storage/v1/object/romy-sandbox-meta/warm/${slug}.json`,
+    `${baseUrl}/storage/v1/object/customer-sites/_meta/${slug}.json`,
     { method: 'DELETE', headers: { apikey: key, Authorization: `Bearer ${key}` } }
   ).catch(() => {})
 }

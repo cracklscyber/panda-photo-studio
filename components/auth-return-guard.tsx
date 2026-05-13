@@ -18,6 +18,7 @@ export function AuthReturnGuard() {
   useEffect(() => {
     if (!hasAuthReturn(window.location)) return
     if (window.location.pathname.startsWith('/auth/callback')) return
+    if (window.location.pathname.startsWith('/reset-password')) return
 
     const current = new URL(window.location.href)
     const target = new URL('/auth/callback', 'https://halloromy.com')

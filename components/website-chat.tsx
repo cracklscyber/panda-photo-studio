@@ -68,7 +68,7 @@ function parseAssistantMessage(content: string): {
   if (siteMarkerMatch) {
     text = text.replace(siteMarkerRe, '').trim()
   } else {
-    const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.com\/(?:site\/)?[a-z0-9-]+/i
+    const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.(?:ai|com)\/(?:site\/)?[a-z0-9-]+/i
     const siteMatch = text.match(siteUrlRe)
     if (siteMatch) {
       siteUrl = siteMatch[0]

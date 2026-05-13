@@ -19,7 +19,12 @@ export interface GeneratedImage {
   bytes: number
 }
 
-const IMAGEN_MODEL = 'imagen-4.0-generate-001'
+const GEMINI_IMAGE_MODEL =
+  process.env.GEMINI_IMAGE_MODEL?.trim() || 'gemini-3.1-flash-image-preview'
+
+function isGeminiNativeImageModel(model: string): boolean {
+  return model.startsWith('gemini-')
+}
 
 export async function generateImage(opts: {
   slug: string
@@ -29,16 +34,37 @@ export async function generateImage(opts: {
 }): Promise<GeneratedImage> {
   const aspect = opts.aspect || '4:3'
   const ai = gemini()
-  const res = await ai.models.generateImages({
-    model: IMAGEN_MODEL,
-    prompt: opts.prompt,
-    config: { numberOfImages: 1, aspectRatio: aspect },
-  })
+  let imageBytes: string | undefined
+  let mimeType = 'image/png'
 
-  const generated = res.generatedImages?.[0]
-  const imageBytes = generated?.image?.imageBytes
+  if (isGeminiNativeImageModel(GEMINI_IMAGE_MODEL)) {
+    const res = await ai.models.generateContent({
+      model: GEMINI_IMAGE_MODEL,
+      contents: opts.prompt,
+      config: {
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: {
+          aspectRatio: aspect,
+          imageSize: '2K',
+        },
+      },
+    })
+    const parts = res.candidates?.[0]?.content?.parts || []
+    const imagePart = parts.find((part) => part.inlineData?.data)
+    imageBytes = imagePart?.inlineData?.data
+    mimeType = imagePart?.inlineData?.mimeType || 'image/png'
+  } else {
+    const res = await ai.models.generateImages({
+      model: GEMINI_IMAGE_MODEL,
+      prompt: opts.prompt,
+      config: { numberOfImages: 1, aspectRatio: aspect },
+    })
+    const generated = res.generatedImages?.[0]
+    imageBytes = generated?.image?.imageBytes
+  }
+
   if (!imageBytes) {
-    throw new Error('No image returned from Imagen.')
+    throw new Error(`No image returned from ${GEMINI_IMAGE_MODEL}.`)
   }
 
   const buffer = Buffer.from(imageBytes, 'base64')
@@ -48,7 +74,7 @@ export async function generateImage(opts: {
   )
   const path = `${safeName.endsWith('.png') ? safeName : `${safeName}.png`}`
 
-  await uploadSiteFile(opts.slug, path, buffer, 'image/png')
+  await uploadSiteFile(opts.slug, path, buffer, mimeType)
 
   return {
     url: sitePublicUrl(opts.slug, path),
@@ -72,7 +98,7 @@ export async function generateImagesForBranche(opts: {
         slug: opts.slug,
         prompt: prompts[i],
         aspect: i === 0 ? '16:9' : '4:3',
-        filename: `gen-${i + 1}.png`,
+        filename: `gen-${Date.now()}-${i + 1}-${Math.random().toString(36).slice(2, 7)}.png`,
       })
       results.push(img)
     } catch (err) {
@@ -132,14 +158,22 @@ function imagePromptsForBranche(branche: string, count: number, wish?: string): 
 
   // When the customer described a concrete wish (mood, motifs, palette),
   // prepend it to the prompt so Imagen actually reflects what they asked for.
-  const withWish = (p: string) => (wishClean ? `${wishClean}. ${p}` : p)
+  const withWish = (p: string, index: number) =>
+    [
+      wishClean
+        ? `Create a NEW alternative based on this customer direction: ${wishClean}.`
+        : 'Create a strong, premium website hero image.',
+      p,
+      `Variation ${index + 1}: use a clearly different camera angle, subject placement, color mood and composition from the other variations.`,
+      'No text, no logo, no watermark, no generic stock-photo feeling, no duplicated composition.',
+    ].join(' ')
 
   const variations = [
-    withWish(`${base}, hero shot, wide composition`),
-    withWish(`${base}, detail shot, close framing`),
-    withWish(`${base}, ambiance shot, soft focus`),
-    withWish(`${base}, people working naturally, candid`),
-    withWish(`${base}, product close-up, careful styling`),
+    withWish(`${base}, hero shot, wide composition, editorial website photography`, 0),
+    withWish(`${base}, detail shot, close framing, tactile and specific`, 1),
+    withWish(`${base}, ambiance shot, energetic but clean, strong visual rhythm`, 2),
+    withWish(`${base}, people working naturally, candid and premium`, 3),
+    withWish(`${base}, product close-up, careful styling, bold but minimal`, 4),
   ]
   return variations.slice(0, count)
 }
