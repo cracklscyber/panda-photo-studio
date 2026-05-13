@@ -14,6 +14,7 @@ export function AuthModal({ sessionId, onSuccess, onClose }: Props) {
   const [mode, setMode] = useState<'choose' | 'email'>('choose')
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
@@ -76,11 +77,15 @@ export function AuthModal({ sessionId, onSuccess, onClose }: Props) {
     setError(null)
     try {
       const supabase = browserSupabase()
+      const cleanPhone = phone.trim()
       const { error: authError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
           emailRedirectTo: authCallbackUrl(),
-          data: { name: name.trim() || null },
+          data: {
+            name: name.trim() || null,
+            phone: cleanPhone || null,
+          },
         },
       })
       if (authError) throw new Error(authError.message)
@@ -177,17 +182,33 @@ export function AuthModal({ sessionId, onSuccess, onClose }: Props) {
             </div>
             <div>
               <label htmlFor="auth-name" className="block text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Name (optional)
+                Username (optional)
               </label>
               <input
                 id="auth-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Vorname"
+                placeholder="Vorname, Spitzname oder Firma"
                 className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900"
                 disabled={busy}
               />
+            </div>
+            <div>
+              <label htmlFor="auth-phone" className="block text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Telefonnummer (optional)
+              </label>
+              <input
+                id="auth-phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+49 ..."
+                autoComplete="tel"
+                className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900"
+                disabled={busy}
+              />
+              <p className="mt-1 text-[11px] text-neutral-500">Damit wir dich für Beratung oder Support direkt erreichen können.</p>
             </div>
             <button
               type="submit"
