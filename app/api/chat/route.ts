@@ -67,6 +67,23 @@ const POST_BUILD_IMAGE_QUESTION =
 const PUBLISH_MISSING_DRAFT_REPLY =
   'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
 
+function stripUrlsAndLiveWording(text: string, isFirstBuild: boolean): string {
+  let cleaned = text
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\b(?:[a-z0-9-]+\.)?halloromy\.com\/\S*/gi, '')
+  if (isFirstBuild) {
+    cleaned = cleaned
+      .replace(/\bdeine Seite ist (jetzt )?live\b/gi, 'dein Entwurf steht')
+      .replace(/\bist (jetzt )?live\b/gi, 'ist als Entwurf fertig')
+      .replace(/\b(deine|die) (Website|Seite) ist online\b/gi, 'dein Entwurf steht')
+      .replace(/\bveröffentlicht\b/gi, 'als Entwurf gebaut')
+  }
+  return cleaned
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function detectOnboardingAnswer(text: string): 'ja' | 'nein' | null {
   const normalized = text.trim().toLowerCase().replace(/[!.?,]+$/g, '')
   if (normalized === 'ja' || normalized === 'yes' || normalized === 'jep' || normalized === 'jo') return 'ja'
@@ -450,16 +467,15 @@ export async function POST(req: NextRequest) {
           console.error('markFirstBuild failed:', err)
         )
       }
-      const bodyText = sanitizeReply(coderResult.reply || 'Fertig.')
+      const bodyText = stripUrlsAndLiveWording(
+        sanitizeReply(coderResult.reply || 'Fertig.'),
+        isFirstBuild
+      )
       const publishHint = isFirstBuild
-        ? 'Das ist erstmal nur dein Entwurf. Wenn du zufrieden bist, schreib: veröffentlichen. Dann schalte ich die Seite live.'
+        ? 'Das ist erstmal nur dein Entwurf. Wenn du zufrieden bist, schreib: veröffentlichen. Dann schalte ich ihn online.'
         : ''
       const imageFollowUp = isFirstBuild ? POST_BUILD_IMAGE_QUESTION : ''
-      const reply = [
-        `${bodyText}\n\n${coderResult.site_url}`,
-        imageFollowUp,
-        publishHint,
-      ]
+      const reply = [bodyText, imageFollowUp, publishHint]
         .filter(Boolean)
         .join('\n\n')
       await appendTurn(sessionKey, loggedUserMessage, reply).catch(() => {})

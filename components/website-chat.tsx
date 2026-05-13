@@ -35,25 +35,30 @@ type WebsiteChatProps = {
   className?: string
 }
 
-function parseAssistantMessage(content: string): { text: string; imageUrl?: string } {
-  // Pull out the [ROMY_IMAGE_DRAFT:url] / [ROMY_IMAGE_CONFIRMED:url] marker
-  // so the user never sees it and we can render the image inline.
+function parseAssistantMessage(content: string): {
+  text: string
+  imageUrl?: string
+  siteUrl?: string
+} {
   const markerRe = /\[ROMY_IMAGE_(?:DRAFT|CONFIRMED):([^\]]+)\]/
   const match = content.match(markerRe)
   let imageUrl = match ? match[1] : undefined
   let text = content.replace(markerRe, '').trim()
 
-  // Also: strip the raw URL from the visible body if it appears in plain
-  // text (the reply currently contains both the URL inline and the marker).
-  // We keep the URL hidden because the image itself is shown above the text.
   if (imageUrl) {
     const urlEsc = imageUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     text = text.replace(new RegExp(`\\s*${urlEsc}\\s*`, 'g'), ' ').trim()
   }
 
-  // Collapse double blank lines that may remain after stripping
+  const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.com\/(?:site\/)?[a-z0-9-]+/i
+  const siteMatch = text.match(siteUrlRe)
+  const siteUrl = siteMatch ? siteMatch[0] : undefined
+  if (siteUrl) {
+    text = text.replace(siteUrl, '').trim()
+  }
+
   text = text.replace(/\n{3,}/g, '\n\n').trim()
-  return { text, imageUrl }
+  return { text, imageUrl, siteUrl }
 }
 
 function parseUserMessage(content: string): { text: string; imageUrl?: string } {
@@ -433,7 +438,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
         >
           <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 sm:px-6">
             {messages.map((message) => {
-              const parsed =
+              const parsed: { text: string; imageUrl?: string; siteUrl?: string } =
                 message.role === 'assistant'
                   ? parseAssistantMessage(message.content)
                   : parseUserMessage(message.content)
@@ -468,14 +473,14 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
                     </a>
                   )}
                   <p className="whitespace-pre-wrap">{parsed.text}</p>
-                  {message.siteUrl && (
+                  {(message.siteUrl || parsed.siteUrl) && (
                     <a
-                      href={message.siteUrl}
+                      href={(message.siteUrl || parsed.siteUrl) as string}
                       target="_blank"
                       rel="noreferrer"
                       className="mt-3 inline-flex rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-700"
                     >
-                      {message.siteUrl.includes('/site/') ? 'Entwurf ansehen' : 'Website ansehen'}
+                      {((message.siteUrl || parsed.siteUrl) as string).includes('/site/') ? 'Entwurf ansehen' : 'Website ansehen'}
                     </a>
                   )}
                   {(message.paymentUrl || message.bookingUrl) && (
