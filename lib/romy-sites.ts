@@ -213,7 +213,23 @@ export async function getOrCreateSite(
   return data as RomySite
 }
 
-export async function publishSite(phone: string): Promise<RomySite | null> {
+export interface PublishConfirmation {
+  // Pflicht-Flag: muss true sein. Dient als Hard-Coded-Sicherung gegen
+  // versehentliches Veröffentlichen aus zukünftigen Codepfaden. Wer
+  // publishSite ohne diesen Beweis ruft, fliegt sofort raus.
+  userExplicitlyConfirmed: true
+}
+
+export async function publishSite(
+  phone: string,
+  confirmation: PublishConfirmation
+): Promise<RomySite | null> {
+  if (!confirmation || confirmation.userExplicitlyConfirmed !== true) {
+    throw new Error(
+      'publishSite refused: userExplicitlyConfirmed flag is required. ' +
+        'Sites must never go live without an explicit user confirmation.'
+    )
+  }
   const site = await findSiteByPhone(phone)
   if (!site) return null
 

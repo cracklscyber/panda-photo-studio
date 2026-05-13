@@ -75,6 +75,31 @@ const QUICK_REPLIES_JA_NEIN = ['Ja', 'Nein']
 const PUBLISH_MISSING_DRAFT_REPLY =
   'Ich habe noch keinen Entwurf, den ich veröffentlichen kann. Schick mir zuerst einen Link oder erzähl mir kurz, was ich bauen soll.'
 
+// Hard-coded 2-Schritt-Gate: bevor eine Seite öffentlich live geht, muss der
+// Nutzer dieses exakte Confirmation-Prompt sehen UND mit einem klaren "Ja"
+// antworten. Der Text ist gleichzeitig der Marker, an dem die zweite Stufe
+// erkennt, dass sie gerade die Bestätigungsfrage beantwortet.
+const PUBLISH_CONFIRMATION_PROMPT =
+  'Bist du sicher, dass ich deine Seite jetzt öffentlich veröffentliche? Sobald ich das mache, ist sie für jeden im Internet sichtbar. Antworte mit „Ja, veröffentlichen", wenn ich loslegen soll.'
+const PUBLISH_CONFIRMED_REPLY =
+  'Alles klar, ich habe deinen Entwurf veröffentlicht.'
+const PUBLISH_CANCELLED_REPLY =
+  'Okay, ich lasse deine Seite als Entwurf. Du kannst sie weiter ändern, sie ist nicht öffentlich.'
+
+function isExplicitPublishYes(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[!.?,]+$/g, '')
+  return (
+    /^ja[,\s]*(veroeffentlich|veröffentlich)/i.test(normalized) ||
+    normalized === 'ja, veröffentlichen' ||
+    normalized === 'ja veröffentlichen' ||
+    normalized === 'ja, veroeffentlichen' ||
+    normalized === 'ja veroeffentlichen' ||
+    normalized === 'ja, mach das' ||
+    normalized === 'ja mach das' ||
+    /\bja[, ]+(live schalten|online stellen)\b/i.test(normalized)
+  )
+}
+
 type OnboardingStage = 'business_info' | 'image_intro' | 'image_wish' | 'build_confirm'
 
 function stripUrlsAndLiveWording(text: string, isFirstBuild: boolean): string {
@@ -523,25 +548,68 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (wantsPublish(text)) {
-      const site = await publishSite(sessionKey).catch((err) => {
-        console.error('publishSite failed:', err)
-        return null
-      })
-      const reply = site
-        ? 'Alles klar, ich habe deinen Entwurf veröffentlicht.'
-        : PUBLISH_MISSING_DRAFT_REPLY
-      const persistedReply = site
-        ? `${reply}\n[ROMY_SITE:${sitePublicUrl(site.slug)}]`
-        : reply
-      await appendTurn(sessionKey, loggedUserMessage, persistedReply).catch(() => {})
-      await emit({
-        type: 'final',
-        text: reply,
-        siteUrl: site ? sitePublicUrl(site.slug) : undefined,
-        intent: 'build',
-      })
-      return
+    // 2-Schritt-Gate für das Veröffentlichen:
+    //   1. User sagt etwas wie "veröffentlichen" → wir antworten mit der
+    //      Bestätigungsfrage (PUBLISH_CONFIRMATION_PROMPT). publishSite()
+    //      wird NICHT aufgerufen.
+    //   2. Nur wenn die letzte Assistant-Nachricht GENAU diese
+    //      Bestätigungsfrage war UND der User explizit "Ja, veröffentlichen"
+    //      sagt, geht die Seite tatsächlich live.
+    {
+      const lastAsst = lastAssistant(history)
+      const lastWasPublishConfirmation = !!lastAsst?.content.includes(
+        PUBLISH_CONFIRMATION_PROMPT
+      )
+
+      // Stufe 2: User antwortet gerade auf unsere Bestätigungsfrage
+      if (lastWasPublishConfirmation) {
+        if (isExplicitPublishYes(text)) {
+          const site = await publishSite(sessionKey, {
+            userExplicitlyConfirmed: true,
+          }).catch((err) => {
+            console.error('publishSite failed:', err)
+            return null
+          })
+          const reply = site ? PUBLISH_CONFIRMED_REPLY : PUBLISH_MISSING_DRAFT_REPLY
+          const persistedReply = site
+            ? `${reply}\n[ROMY_SITE:${sitePublicUrl(site.slug)}]`
+            : reply
+          await appendTurn(sessionKey, loggedUserMessage, persistedReply).catch(
+            () => {}
+          )
+          await emit({
+            type: 'final',
+            text: reply,
+            siteUrl: site ? sitePublicUrl(site.slug) : undefined,
+            intent: 'build',
+          })
+          return
+        }
+        // Jede andere Antwort (auch "Ja", "okay", "klar" ohne den expliziten
+        // Veröffentlichen-Wortlaut) = kein Publish.
+        await appendTurn(sessionKey, loggedUserMessage, PUBLISH_CANCELLED_REPLY).catch(
+          () => {}
+        )
+        await emit({ type: 'reply', text: PUBLISH_CANCELLED_REPLY, intent: 'chat' })
+        return
+      }
+
+      // Stufe 1: User möchte veröffentlichen → erst Bestätigung einholen,
+      // niemals direkt live gehen.
+      if (wantsPublish(text)) {
+        await appendTurn(
+          sessionKey,
+          loggedUserMessage,
+          PUBLISH_CONFIRMATION_PROMPT
+        ).catch(() => {})
+        await emit({
+          type: 'reply',
+          text: PUBLISH_CONFIRMATION_PROMPT,
+          intent: 'chat',
+          quickReplies: ['Ja, veröffentlichen', 'Nein, lieber nicht'],
+        })
+        return
+      }
     }
 
     // Q2 just answered → Q3 (image-intro + wish question with Ja/Nein quick-replies)
