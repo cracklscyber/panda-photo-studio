@@ -250,7 +250,7 @@ export default function Home() {
             </div>
             <nav className="flex flex-wrap gap-5 text-xs text-[#f5efe2]/55">
               <a href="#chat" className="hover:text-[#f5efe2]">Chat</a>
-              <Link href="/impressum" className="hover:text-[#f5efe2]">Impressum</Link>
+              <a href="mailto:halloromy.ai@gmail.com" className="hover:text-[#f5efe2]">Support anfordern</a>
               <Link href="/datenschutz" className="hover:text-[#f5efe2]">Datenschutz</Link>
               <Link href="/agb" className="hover:text-[#f5efe2]">Nutzungsbedingungen</Link>
             </nav>
