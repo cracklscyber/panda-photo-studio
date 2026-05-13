@@ -3,6 +3,11 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AuthModal } from './auth-modal'
+import {
+  QualificationModal,
+  isAlreadyQualified,
+  getStoredBusinessName,
+} from './qualification-modal'
 
 declare global {
   interface Window {
@@ -168,6 +173,9 @@ function trackCompleteRegistration(method: string) {
 
 export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   const [open, setOpen] = useState(false)
+  const [qualificationOpen, setQualificationOpen] = useState(false)
+  const [qualified, setQualified] = useState(false)
+  const [businessName, setBusinessName] = useState('')
   const [sessionId, setSessionId] = useState('')
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
@@ -225,13 +233,52 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   }, [open, sessionId])
 
   useEffect(() => {
+    const alreadyQualified = isAlreadyQualified()
+    if (alreadyQualified) {
+      setQualified(true)
+      setBusinessName(getStoredBusinessName())
+    }
+
     function syncFromHash() {
-      setOpen(window.location.hash === '#chat')
+      const wantsChat = window.location.hash === '#chat'
+      if (!wantsChat) {
+        setOpen(false)
+        return
+      }
+      if (isAlreadyQualified()) {
+        setQualified(true)
+        setBusinessName(getStoredBusinessName())
+        setOpen(true)
+      } else {
+        // Hash entfernen, damit der Chat nicht "hängt" — Modal übernimmt
+        history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search
+        )
+        setOpen(false)
+        setQualificationOpen(true)
+      }
     }
     syncFromHash()
     window.addEventListener('hashchange', syncFromHash)
     return () => window.removeEventListener('hashchange', syncFromHash)
   }, [])
+
+  function handleQualified(name: string) {
+    setQualified(true)
+    setBusinessName(name)
+    setQualificationOpen(false)
+    // Direkt in den Chat
+    if (typeof window !== 'undefined') {
+      history.replaceState(
+        null,
+        '',
+        window.location.pathname + window.location.search + '#chat'
+      )
+    }
+    setOpen(true)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -330,6 +377,8 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
           message: messageText,
           isOnboarding: options.isOnboarding === true,
           imageDataUrl: attachedImage?.dataUrl,
+          qualified: qualified || undefined,
+          businessName: businessName || undefined,
         }),
       })
 
@@ -426,7 +475,15 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
     await sendMessage(text)
   }
 
-  if (!open) return null
+  if (!open) {
+    return (
+      <QualificationModal
+        open={qualificationOpen}
+        onQualified={handleQualified}
+        onClose={() => setQualificationOpen(false)}
+      />
+    )
+  }
 
   return (
     <div
