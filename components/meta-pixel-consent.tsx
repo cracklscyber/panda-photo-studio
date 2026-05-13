@@ -45,11 +45,18 @@ export function MetaPixelConsent({ pixelId }: MetaPixelConsentProps) {
               id="cookie-consent-title"
               className="text-xl font-semibold text-[#1a1714] sm:text-2xl"
             >
-              Cookies & Messung
+              Cookies & Analyse
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-[#1a1714]/70 sm:text-base">
-              Wir nutzen Meta Pixel, um Werbeanzeigen zu messen und Romy stetig zu verbessern.
-              Bitte triff eine Auswahl, bevor du fortfährst.
+              Wir nutzen optionale Cookies, um zu verstehen, wie Romy genutzt wird,
+              und sie kontinuierlich zu verbessern. Details findest du in der{' '}
+              <a
+                href="/datenschutz"
+                className="underline underline-offset-2 hover:text-[#1a1714]"
+              >
+                Datenschutzerklärung
+              </a>
+              .
             </p>
             <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
               <button
