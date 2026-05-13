@@ -20,10 +20,7 @@ export default function Impressum() {
         <section className="mb-10">
           <h2 className="mb-3 text-lg font-semibold">Angaben gemäß § 5 TMG</h2>
           <address className="not-italic text-neutral-700 leading-relaxed">
-            Zoe Christiansen<br />
-            Steinstraße 15<br />
-            10119 Berlin<br />
-            Deutschland
+            ROMIAI Berlin
           </address>
         </section>
 
@@ -44,9 +41,7 @@ export default function Impressum() {
         <section className="mb-10">
           <h2 className="mb-3 text-lg font-semibold">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
           <p className="text-neutral-700 leading-relaxed">
-            Zoe Christiansen<br />
-            Steinstraße 15<br />
-            10119 Berlin
+            ROMIAI Berlin
           </p>
         </section>
 
