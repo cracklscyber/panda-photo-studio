@@ -50,14 +50,6 @@ export function middleware(req: NextRequest) {
   if (parts.length >= 2 && parts[0] === 'site') {
     const aliasSlug = parts[1]
     const rest = parts.slice(2)
-    // Trailing-Slash-Pflicht für die Index-URL: ohne Slash löst der Browser
-    // relative <img src="gen-x.png"> gegen /site/ statt /site/<slug>/ auf
-    // und alle Bilder schlagen mit 404 fehl.
-    if (rest.length === 0 && !req.nextUrl.pathname.endsWith('/')) {
-      const redirect = req.nextUrl.clone()
-      redirect.pathname = `${req.nextUrl.pathname}/`
-      return NextResponse.redirect(redirect, 308)
-    }
     const url = req.nextUrl.clone()
     url.pathname =
       rest.length > 0

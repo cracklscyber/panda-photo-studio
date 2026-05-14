@@ -27,9 +27,7 @@ export function sitePreviewUrl(slug: string, path = 'index.html'): string {
     .trim()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')
-  // Index immer mit Trailing-Slash, damit relative Bild-/CSS-Pfade im
-  // statisch gebauten HTML korrekt gegen /site/<slug>/ aufgelöst werden.
-  const suffix = path && path !== 'index.html' ? `/${path}` : '/'
+  const suffix = path && path !== 'index.html' ? `/${path}` : ''
   return `https://${apex}/site/${slug}${suffix}`
 }
 

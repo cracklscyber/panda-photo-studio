@@ -38,7 +38,23 @@ export async function GET(
     return new Response('Not Found', { status: 404 })
   }
   const isPreview = req.nextUrl.searchParams.get('preview') === '1'
-  return new Response(new Uint8Array(buf), {
+
+  // Apex-Preview-URL ist /site/<slug> (ohne Trailing-Slash, weil Next.js
+  // sonst Endlos-Redirects baut). Damit relative Bild-/CSS-Pfade im
+  // statischen HTML nicht gegen /site/ statt /site/<slug>/ auflösen,
+  // injizieren wir hier ein <base href="/site/<slug>/"> in den <head>.
+  // Auf der Subdomain (kein preview-Flag) ist die Doc-URL bereits "/" und
+  // braucht das nicht.
+  let body: BodyInit = new Uint8Array(buf)
+  if (isPreview && relPath === 'index.html') {
+    const html = new TextDecoder().decode(buf)
+    const baseTag = `<base href="/site/${slug}/">`
+    body = /<head[^>]*>/i.test(html)
+      ? html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`)
+      : baseTag + html
+  }
+
+  return new Response(body, {
     status: 200,
     headers: {
       'content-type': guessContentType(relPath),
