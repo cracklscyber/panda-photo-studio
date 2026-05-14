@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { DM_Sans, Fraunces } from 'next/font/google'
 import './globals.css'
 import { MetaPixelConsent } from '@/components/meta-pixel-consent'
@@ -15,6 +15,13 @@ const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
 export const metadata: Metadata = {
   title: 'Romy AI — Deine Website per Chat',
   description: 'Romy baut und pflegt deine Website direkt im Chat. Kein Code, keine Vorlagen zum Ausfüllen, einfach schreiben.',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#f5efe2',
 }
 
 export default function RootLayout({

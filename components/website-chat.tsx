@@ -187,6 +187,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const sid = getSessionId()
@@ -301,6 +302,37 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
       behavior: 'smooth',
     })
   }, [messages, isSending, open])
+
+  // iOS Safari verankert `position: fixed` am Layout-Viewport, nicht am
+  // Visual-Viewport. Sobald die Tastatur kommt, scrollt iOS die Page hoch
+  // und das Overlay rutscht aus dem sichtbaren Bereich (Header weg,
+  // Input mittig, Hintergrund-Page scheint unten durch). Wir koppeln
+  // Höhe und Top-Offset live an `window.visualViewport`, damit das
+  // Overlay genau auf dem sichtbaren Rechteck sitzt.
+  useEffect(() => {
+    if (!open) return
+    if (typeof window === 'undefined') return
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const el = overlayRef.current
+      if (!el) return
+      el.style.height = `${vv.height}px`
+      el.style.top = `${vv.offsetTop}px`
+    }
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    update()
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+      const el = overlayRef.current
+      if (el) {
+        el.style.height = ''
+        el.style.top = ''
+      }
+    }
+  }, [open])
 
   function closeChat() {
     if (typeof window === 'undefined') return
@@ -487,7 +519,9 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-[#faf9f6] ${className}`}
+      ref={overlayRef}
+      className={`fixed left-0 right-0 z-50 overflow-hidden bg-[#faf9f6] ${className}`}
+      style={{ top: 0, height: '100dvh' }}
       role="dialog"
       aria-modal="true"
       aria-label="Chat mit Romy"
@@ -528,7 +562,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
 
         <div
           ref={scrollRef}
-          className="chat-container flex-1 overflow-y-auto"
+          className="chat-container min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
         >
           <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 sm:px-6">
             {messages.map((message) => {
@@ -674,6 +708,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
         <form
           onSubmit={handleSubmit}
           className="border-t border-neutral-200 bg-white/80 backdrop-blur p-3 sm:p-4"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.75rem)' }}
         >
           <div className="mx-auto max-w-5xl space-y-2">
             {(pendingImage || imageError) && (

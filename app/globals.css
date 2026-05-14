@@ -26,6 +26,18 @@ body {
   overflow-x: hidden;
 }
 
+/* iOS Safari zoomt automatisch rein, sobald ein Input/Textarea mit
+ * font-size < 16px fokussiert wird. Auf Mobile (< 640px) erzwingen wir
+ * 16px, damit das Layout beim Tippen nicht verspringt. Desktop-Inputs
+ * bleiben durch Tailwind-Klassen unangetastet. */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Glassmorphism card */
 .glass-card {
   background: rgba(255, 255, 255, 0.65);
