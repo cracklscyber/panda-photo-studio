@@ -15,24 +15,47 @@ interface ChatMessage {
   content: string
 }
 
-function extractChatImages(content: string): { text: string; imageUrls: string[] } {
-  // Findet alle ROMY_USER_IMAGE / ROMY_IMAGE_DRAFT / ROMY_IMAGE_CONFIRMED
-  // Marker. Marker werden entfernt und URLs separat zurückgegeben, damit der
-  // Admin die Bilder inline rendert (statt als Marker-Text).
-  const markerRe = /\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED):([^\]]+)\]/g
+function parseChatContent(content: string): {
+  text: string
+  imageUrls: string[]
+  siteUrl?: string
+} {
+  // Bild-Marker (User-Upload, Draft, Confirmed) extrahieren — wie zuvor.
+  const imageMarkerRe = /\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED):([^\]]+)\]/g
   const urls: string[] = []
-  let text = content.replace(markerRe, (_match, url: string) => {
+  let text = content.replace(imageMarkerRe, (_match, url: string) => {
     urls.push(url)
     return ''
   })
-  // Doppelte URLs entfernen, freistehende URL im Body wegputzen
   const unique = Array.from(new Set(urls))
   for (const url of unique) {
     const urlEsc = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     text = text.replace(new RegExp(`\\s*${urlEsc}\\s*`, 'g'), ' ')
   }
+
+  // Site-Link extrahieren — exakt dieselbe Logik wie im Website-Chat
+  // (components/website-chat.tsx parseAssistantMessage), damit der Admin
+  // genau dasselbe sieht wie der User: Button bei Match, roher Link bei Fehler.
+  let siteUrl: string | undefined
+  const siteMarkerRe = /\[ROMY_SITE:([^\]]+)\]/
+  const siteMarkerMatch = text.match(siteMarkerRe)
+  if (siteMarkerMatch) {
+    siteUrl = siteMarkerMatch[1]
+    text = text.replace(siteMarkerRe, '').trim()
+  } else {
+    const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.(?:ai|com)\/(?:site\/)?[a-z0-9-]+/i
+    const m = text.match(siteUrlRe)
+    if (m) {
+      siteUrl = m[0]
+      text = text.replace(m[0], '').trim()
+    }
+  }
+
+  // Quick-Reply-Marker im Admin nicht anzeigen
+  text = text.replace(/\[ROMY_QUICK_REPLIES:[^\]]+\]/g, '').trim()
+
   text = text.replace(/\n{3,}/g, '\n\n').trim()
-  return { text, imageUrls: unique }
+  return { text, imageUrls: unique, siteUrl }
 }
 
 interface SiteRow {
@@ -232,7 +255,7 @@ export default async function ConvoPage({
               <p className="text-sm text-neutral-500">Keine Nachrichten.</p>
             )}
             {messages.map((m, i) => {
-              const { text, imageUrls } = extractChatImages(m.content)
+              const { text, imageUrls, siteUrl } = parseChatContent(m.content)
               return (
                 <div
                   key={i}
@@ -265,6 +288,16 @@ export default async function ConvoPage({
                     <div className="whitespace-pre-wrap break-words leading-relaxed">
                       {text}
                     </div>
+                  )}
+                  {siteUrl && (
+                    <a
+                      href={siteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-700"
+                    >
+                      {siteUrl.includes('/site/') ? 'Entwurf ansehen' : 'Website ansehen'}
+                    </a>
                   )}
                 </div>
               )
