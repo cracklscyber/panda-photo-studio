@@ -305,20 +305,19 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
 
   // iOS Safari verankert `position: fixed` am Layout-Viewport, nicht am
   // Visual-Viewport. Sobald die Tastatur kommt, scrollt iOS die Page hoch
-  // und das Overlay rutscht aus dem sichtbaren Bereich (Header weg,
-  // Input mittig, Hintergrund-Page scheint unten durch). Wir koppeln
-  // Höhe und Top-Offset live an `window.visualViewport`, damit das
-  // Overlay genau auf dem sichtbaren Rechteck sitzt.
+  // und das Overlay rutscht aus dem sichtbaren Bereich. Wir schreiben
+  // die aktuelle Höhe+Top als CSS-Variablen aufs <html>-Element. Der
+  // Overlay-`style` referenziert diese Variablen — so kann ein React
+  // Re-Render unsere Werte nicht überschreiben.
   useEffect(() => {
     if (!open) return
     if (typeof window === 'undefined') return
     const vv = window.visualViewport
     if (!vv) return
+    const root = document.documentElement
     const update = () => {
-      const el = overlayRef.current
-      if (!el) return
-      el.style.height = `${vv.height}px`
-      el.style.top = `${vv.offsetTop}px`
+      root.style.setProperty('--chat-vh', `${vv.height}px`)
+      root.style.setProperty('--chat-top', `${vv.offsetTop}px`)
     }
     vv.addEventListener('resize', update)
     vv.addEventListener('scroll', update)
@@ -326,11 +325,8 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
     return () => {
       vv.removeEventListener('resize', update)
       vv.removeEventListener('scroll', update)
-      const el = overlayRef.current
-      if (el) {
-        el.style.height = ''
-        el.style.top = ''
-      }
+      root.style.removeProperty('--chat-vh')
+      root.style.removeProperty('--chat-top')
     }
   }, [open])
 
@@ -521,7 +517,10 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
     <div
       ref={overlayRef}
       className={`fixed left-0 right-0 z-50 overflow-hidden bg-[#faf9f6] ${className}`}
-      style={{ top: 0, height: '100dvh' }}
+      style={{
+        top: 'var(--chat-top, 0px)',
+        height: 'var(--chat-vh, 100dvh)',
+      }}
       role="dialog"
       aria-modal="true"
       aria-label="Chat mit Romy"
