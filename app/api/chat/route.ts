@@ -18,6 +18,7 @@ import {
 } from '@/lib/supabase-storage'
 import { loadHistory, appendTurn, appendAssistantOnly, resetHistory } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
+import { saveBuildTranscript } from '@/lib/transcript-storage'
 import { generateImagesForBranche } from '@/lib/gemini-images'
 import {
   IMAGE_DRAFT_MARKER,
@@ -62,13 +63,20 @@ const IMAGE_INTRO_QUESTION =
 const WISH_PROMPT =
   'Erzähl mir kurz, was dir vorschwebt. Stimmung, Farben, was darauf zu sehen sein soll.'
 const POST_IMAGES_GENERATING =
-  'Geht klar, ich generiere dir gerade drei Vorschläge. Einen Moment.'
+  'Ich generiere dir gerade drei Vorschläge. Bitte etwas Geduld, das dauert ein paar Minuten (Seite bitte nicht neu laden).'
+const PATIENCE_REPLY = 'Ich bin dabei, einen Moment.'
 const POST_IMAGES_BUILD_QUESTION =
   'Damit kann ich loslegen. Soll ich jetzt deine Seite bauen?'
 const POST_IMAGES_FAILED =
   'Mit der Bildgenerierung hat gerade etwas gehakt. Ich leite das an mein Team weiter. Wir können trotzdem mit dem Entwurf weitermachen, magst du loslegen?'
 const POST_BUILD_IMAGE_QUESTION =
   'Möchtest du zusammen mit mir Bilder generieren oder hast du bereits eigene? Schick sie mir einfach rein.'
+const URL_NOT_SUPPORTED_REPLY =
+  'Einen Link kann ich noch nicht analysieren. Beschreib mir bitte kurz mit eigenen Worten, was du machst — dann lege ich los.'
+
+function messageContainsUrl(text: string): boolean {
+  return /https?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+/i.test(text)
+}
 
 const QUICK_REPLIES_JA_NEIN = ['Ja', 'Nein']
 
@@ -208,6 +216,44 @@ function previousAssistantAskedToBuildAfterImages(
   const last = lastAssistant(history)
   if (!last) return false
   return last.content.includes('Damit kann ich loslegen. Soll ich jetzt deine Seite bauen?')
+}
+
+// Erkennt, ob Romy gerade in einer Wartephase ist (Bilder generieren oder Site
+// bauen), in der eingehende User-Fragen wie "wie lange noch?" mit einem ruhigen
+// "Ich bin dabei, einen Moment." beantwortet werden sollen statt das Flow-State-
+// Machine zu triggern.
+function isInWaitState(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  // Wir laufen vom Ende rückwärts: trifft zuerst ein Resultat-Marker (Image-
+  // Draft, ROMY_SITE, fertiger Build-Reply), sind wir nicht mehr in der Warte-
+  // schleife. Trifft zuerst ein "Generating/Building"-Indikator, sind wir es.
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]
+    if (m.role !== 'assistant') continue
+    const c = m.content
+    if (c.startsWith(IMAGE_DRAFT_MARKER)) return false
+    if (c.includes('[ROMY_SITE:')) return false
+    if (c === PATIENCE_REPLY) return true // bleibt im Wartestate
+    if (
+      c.includes('das dauert ein paar Minuten') ||
+      c.includes('ich generiere dir gerade drei Vorschläge') ||
+      c.includes('Ich baue dir jetzt einen ersten Entwurf') ||
+      c.includes('Bleib bitte hier im Chat')
+    ) return true
+  }
+  return false
+}
+
+// Patience-Pattern: kurze ungeduldige Nachfragen während Romy am Generieren
+// oder Bauen ist. Bewusst eng gefasst, damit echte Inhaltsantworten nicht
+// fälschlich als "wie lange noch" interpretiert werden.
+function looksLikePatienceQuestion(text: string): boolean {
+  const t = text.trim()
+  if (t.length === 0 || t.length > 200) return false
+  return /(\bwie\s+lange|\bwie\s+viel(?:\s+noch)?|\bwann\s+(?:fertig|bist\s+du|kommt|ist\s+es)|\bnoch\s+nicht\s+fertig|\bdauert\s+(?:das|es)|\bbist\s+du\s+(?:noch\s+)?da|\bnoch\s+da\??$|^hallo\??$|^\?+$|\bläuft\s+(?:das|es)\s+(?:noch|gerade)|\bgeht'?s\s+voran|\bstatus\b|\bupdate\b|\bwo\s+bist\s+du|^fertig\??$)/i.test(
+    t
+  )
 }
 
 function previousAssistantAskedWhatToChange(
@@ -363,11 +409,17 @@ async function runImageGenerationStep(opts: {
     return
   }
 
+  // Kombiniere den von Claude bereinigten business_name mit der rohen
+  // User-Beschreibung. Der business_name liefert oft das prägnante Branchen-
+  // Wort ("Buchhandlung", "Yoga-Studio"), das die Klassifizierung in
+  // imagePromptsForBranche zuverlässig matcht.
+  const brancheForImages = [site.business_name, branche].filter(Boolean).join(' ')
+
   let images: Awaited<ReturnType<typeof generateImagesForBranche>> = []
   try {
     images = await generateImagesForBranche({
       slug: site.slug,
-      branche,
+      branche: brancheForImages,
       wish: extraPromptHint || undefined,
       count: 3,
     })
@@ -519,6 +571,16 @@ export async function POST(req: NextRequest) {
 
     const history = await loadHistory(sessionKey)
 
+    // Harte Regel: während Bild-Generierung oder Build noch läuft, beantwortet
+    // Romy ungeduldige Nachfragen ("wie lange noch?", "hallo?") freundlich mit
+    // "Ich bin dabei, einen Moment." statt sie als Inhalt durch die State-
+    // Machine zu schieben.
+    if (isInWaitState(history) && looksLikePatienceQuestion(text)) {
+      await appendTurn(sessionKey, loggedUserMessage, PATIENCE_REPLY).catch(() => {})
+      await emit({ type: 'reply', text: PATIENCE_REPLY, intent: 'chat' })
+      return
+    }
+
     if (imageFeatureEnabled()) {
       const imageIntent = detectImageIntent(text, history)
       if (imageIntent.kind !== 'none') {
@@ -614,6 +676,14 @@ export async function POST(req: NextRequest) {
 
     // Q2 just answered → Q3 (image-intro + wish question with Ja/Nein quick-replies)
     if (previousAssistantAskedForBusinessInfo(history)) {
+      // URL-Sperre: Wir können Links noch nicht zuverlässig zusammenfassen.
+      // Title-Scraping hat zu falschen business_name + irreführenden
+      // Image-Prompts geführt (z.B. Steuerthemen-Seite -> IT-Agentur-Bilder).
+      if (messageContainsUrl(text)) {
+        await appendTurn(sessionKey, loggedUserMessage, URL_NOT_SUPPORTED_REPLY).catch(() => {})
+        await emit({ type: 'reply', text: URL_NOT_SUPPORTED_REPLY, intent: 'chat' })
+        return
+      }
       const detour = onboardingDetourReply(text, 'business_info')
       if (detour) {
         await appendTurn(sessionKey, loggedUserMessage, detour.text).catch(() => {})
@@ -810,6 +880,9 @@ export async function POST(req: NextRequest) {
     const BUILD_TIMEOUT_MS = 295_000
     let coderResult: Awaited<ReturnType<typeof runRomyCoder>> | null = null
     let timedOut = false
+    // Shared log array: runRomyCoder schreibt phases hier rein, damit der
+    // Outer-Catch (Timeout/Exception) auch ein Transcript persistieren kann.
+    const externalLog: Array<{ step: string; ms: number; detail?: unknown }> = []
 
     try {
       coderResult = await Promise.race([
@@ -819,6 +892,7 @@ export async function POST(req: NextRequest) {
           history,
           isFirstBuild,
           imageUrl: imageDataUrl,
+          externalLog,
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => {
@@ -828,6 +902,7 @@ export async function POST(req: NextRequest) {
         ),
       ])
     } catch (err) {
+      const errMsg = (err as Error).message
       await logBuild({
         phone: sessionKey,
         slug: site.slug,
@@ -837,8 +912,34 @@ export async function POST(req: NextRequest) {
         was_warm: !isFirstBuild,
         user_message: text,
         error_step: timedOut ? 'build_timeout' : 'build_exception',
-        error_msg: (err as Error).message,
+        error_msg: errMsg,
       }).catch((logErr) => console.error('logBuild (timeout) failed:', logErr))
+
+      // Outer-Transcript-Save: bei Timeout läuft der innere runRomyCoder zwar
+      // weiter, hat aber typischerweise <5s bis Vercel den Prozess killt
+      // (maxDuration=300, outer=295). Wir schreiben deshalb hier mit dem
+      // shared externalLog ein Transcript, damit später per
+      // scripts/user-transcript.mjs nachvollziehbar ist, wo der Build hing.
+      await saveBuildTranscript({
+        slug: site.slug,
+        phone: sessionKey,
+        ok: false,
+        was_warm: !isFirstBuild,
+        is_first_build: isFirstBuild,
+        duration_ms: Date.now() - buildStart,
+        cost_usd: null,
+        user_message: text,
+        log: externalLog,
+        agent: {
+          exit_code: null,
+          parsed: null,
+          assistant_text: null,
+          stdout: '',
+          stderr: '',
+        },
+        error_step: timedOut ? 'build_timeout' : 'build_exception',
+        error_msg: errMsg,
+      }).catch((tErr) => console.error('outer saveBuildTranscript failed:', tErr))
 
       const reply = timedOut
         ? 'Entschuldige, der Build hat zu lange gedauert und wurde automatisch gestoppt. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'

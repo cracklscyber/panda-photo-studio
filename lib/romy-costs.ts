@@ -10,6 +10,7 @@ export interface BuildLogEntry {
   user_message: string | null
   error_step?: string | null
   error_msg?: string | null
+  transcript_path?: string | null
 }
 
 export async function logBuild(entry: BuildLogEntry): Promise<void> {
@@ -22,6 +23,11 @@ export async function logBuild(entry: BuildLogEntry): Promise<void> {
     ? entry.user_message.slice(0, 500)
     : null
 
+  const baseMsg = entry.error_msg ? entry.error_msg.slice(0, 900) : null
+  const composedMsg = entry.transcript_path
+    ? `${baseMsg ?? ''}${baseMsg ? '\n' : ''}transcript=${entry.transcript_path}`.slice(0, 1000)
+    : baseMsg
+
   await sb.from('romy_build_logs').insert({
     phone: entry.phone,
     slug: entry.slug,
@@ -31,6 +37,6 @@ export async function logBuild(entry: BuildLogEntry): Promise<void> {
     was_warm: entry.was_warm,
     user_message: trimmedMessage,
     error_step: entry.error_step ?? null,
-    error_msg: entry.error_msg ? entry.error_msg.slice(0, 1000) : null,
+    error_msg: composedMsg,
   })
 }

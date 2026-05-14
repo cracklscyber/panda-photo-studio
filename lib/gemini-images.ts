@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
-import { uploadSiteFile, sitePublicUrl } from './supabase-storage'
+import { uploadSiteFile, sitePreviewUrl } from './supabase-storage'
 
 let _client: GoogleGenAI | null = null
 function gemini(): GoogleGenAI {
@@ -77,7 +77,7 @@ export async function generateImage(opts: {
   await uploadSiteFile(opts.slug, path, buffer, mimeType)
 
   return {
-    url: sitePublicUrl(opts.slug, path),
+    url: sitePreviewUrl(opts.slug, path),
     storagePath: path,
     bytes: buffer.byteLength,
   }
@@ -109,8 +109,25 @@ export async function generateImagesForBranche(opts: {
 }
 
 function imagePromptsForBranche(branche: string, count: number, wish?: string): string[] {
-  const lower = branche.toLowerCase()
-  const matchAny = (...keywords: string[]) => keywords.some((k) => lower.includes(k))
+  // Wortgrenzen-Match statt Substring. NFD-Normalisierung räumt
+  // Diakritika weg (ä→a, é→e, ß→ss), Bindestriche werden zu Space → so
+  // splittet "IT-Dienstleister" sauber in zwei Wörter und matched
+  // "it-dienstleister" zuverlässig. Fixt den Bug, bei dem das Keyword "it"
+  // innerhalb von "website" matchte und jeden User in den IT-Agentur-Prompt
+  // rutschen ließ.
+  const normalize = (s: string) =>
+    ' ' +
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim() +
+    ' '
+  const padded = normalize(branche)
+  const matchAny = (...keywords: string[]) =>
+    keywords.some((k) => padded.includes(normalize(k)))
   const wishClean = (wish || '').trim().slice(0, 400)
 
   let base: string
@@ -136,7 +153,7 @@ function imagePromptsForBranche(branche: string, count: number, wish?: string): 
     base = 'A roofer at work on a German residential roof, installing tiles or zinc gutter, safety harness, blue sky, authentic Handwerk, photo-realistic'
   } else if (matchAny('kfz', 'mechatron', 'mechaniker', 'autowerkstatt', 'autohaus', 'kfz-werkstatt')) {
     base = 'A modern car repair garage interior, a vehicle on a lift, mechanic working with diagnostic tools, clean industrial space, photo-realistic'
-  } else if (matchAny('hundeschule', 'hundetraining', 'tier', 'tierarzt', 'tierpraxis')) {
+  } else if (matchAny('hundeschule', 'hundetraining', 'hundetrainer', 'tier', 'tierarzt', 'tierpraxis')) {
     base = 'A bright outdoor dog training scene, a happy dog with a focused trainer, golden hour light, natural park setting, authentic and joyful atmosphere, photo-realistic'
   } else if (matchAny('handwerk', 'werkstatt', 'meisterbetrieb', 'gewerk')) {
     base = 'A traditional German craftsman workshop, focused hands working with quality tools, warm natural light, authentic and trustworthy atmosphere, photo-realistic'
@@ -150,7 +167,13 @@ function imagePromptsForBranche(branche: string, count: number, wish?: string): 
     base = 'A refined modern law-office or consultancy interior, oak desk, leather chair, soft daylight, books, trustworthy and professional atmosphere, photo-realistic'
   } else if (matchAny('fahrschule', 'fahrlehrer')) {
     base = 'A modern driving-school car interior on a sunny German road, dashboard view, calm and reassuring atmosphere, photo-realistic'
-  } else if (matchAny('it', 'software', 'agentur', 'webdesign', 'marketing')) {
+  } else if (matchAny('buchhandlung', 'buchladen', 'bücher', 'antiquariat', 'bookstore')) {
+    base = 'A warm independent German bookstore interior, floor-to-ceiling wooden bookshelves filled with books, a cosy reading corner with an armchair and a small reading lamp, soft natural daylight through tall windows, books carefully arranged spines outward, calm editorial atmosphere, photo-realistic'
+  } else if (matchAny('boutique', 'mode', 'fashion', 'kleidung', 'modegeschäft')) {
+    base = 'A refined minimalist fashion boutique interior, curated rack of clothing on a wooden rail, soft warm daylight, natural materials, calm and premium atmosphere, photo-realistic'
+  } else if (matchAny('schmuck', 'goldschmied', 'juwelier', 'jewelry')) {
+    base = 'A refined jewelry atelier, close-up of hands working on a delicate piece, soft warm spotlight, dark velvet surface, premium craftsmanship atmosphere, photo-realistic'
+  } else if (matchAny('software', 'agentur', 'webdesign', 'marketing', 'it-firma', 'it-agentur', 'it-dienstleister', 'it-consulting', 'it-service')) {
     base = 'A modern creative agency office, large monitors, warm wood, plants, focused team at work, soft daylight, photo-realistic'
   } else {
     base = 'A welcoming professional small-business interior, natural daylight, modern minimalist branding, warm tones, photo-realistic'

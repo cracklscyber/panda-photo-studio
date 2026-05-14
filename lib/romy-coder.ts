@@ -6,6 +6,7 @@ import {
   sitePreviewUrl,
 } from './supabase-storage'
 import { extractConfirmedImageUrls } from './romy-image-intent'
+import { saveBuildTranscript } from './transcript-storage'
 
 const WORKSPACE = '/home/user/workspace'
 const CLAUDE_HOME = '/home/user/romy-claude'
@@ -110,6 +111,7 @@ export interface RomyCoderResult {
   stdout_tail?: string
   stderr_tail?: string
   log?: Array<{ step: string; ms: number; detail?: unknown }>
+  transcript_path?: string | null
 }
 
 const WARM_TIMEOUT_MS = 15 * 60_000
@@ -635,6 +637,10 @@ interface RomyCoderInput {
   imageUrl?: string
   history?: Array<{ role: 'user' | 'assistant'; content: string }>
   isFirstBuild?: boolean
+  // Wenn gesetzt, schreibt runRomyCoder seine phases in dieses Array statt in
+  // ein internes. Erlaubt dem Caller (app/api/chat/route.ts) bei Outer-Timeout
+  // noch ein Transcript mit den bis dahin erreichten Schritten zu persistieren.
+  externalLog?: Array<{ step: string; ms: number; detail?: unknown }>
 }
 
 export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResult> {
@@ -653,7 +659,7 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
   let sandbox: Sandbox | null = null
   let wasWarm = false
   let preserveSandbox = false
-  const log: Array<{ step: string; ms: number; detail?: unknown }> = []
+  const log: Array<{ step: string; ms: number; detail?: unknown }> = input.externalLog ?? []
   const mark = (step: string, detail?: unknown) => log.push({ step, ms: Date.now() - t0, detail })
   let currentStep = 'init'
 
@@ -773,7 +779,7 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
     const promptParts: string[] = []
     if (history.length > 0) {
       promptParts.push('Bisheriger Gesprächsverlauf (älteste zuerst):')
-      for (const h of history.slice(-10)) {
+      for (const h of history.slice(-30)) {
         promptParts.push(`${h.role === 'user' ? 'Kunde' : 'Romy'}: ${h.content}`)
       }
       promptParts.push('---')
@@ -850,14 +856,49 @@ const stream = query({
 })
 
 let lastAssistant = ''
+let allAssistant = []
 let resultMsg = null
+const phases = []
+let tlast = Date.now()
 for await (const msg of stream) {
+  const now = Date.now()
+  const dt_ms = now - tlast
+  tlast = now
+  const phase = { type: msg.type, subtype: msg.subtype || null, dt_ms }
   if (msg.type === 'assistant') {
     const blocks = msg.message?.content || []
-    for (const b of blocks) if (b.type === 'text' && b.text) lastAssistant = b.text
+    const summary = []
+    for (const b of blocks) {
+      if (b.type === 'text' && b.text) {
+        lastAssistant = b.text
+        allAssistant.push(b.text.slice(0, 600))
+        summary.push({ k: 'text', t: b.text.slice(0, 200) })
+      } else if (b.type === 'tool_use') {
+        let inp = ''
+        try { inp = JSON.stringify(b.input).slice(0, 200) } catch {}
+        summary.push({ k: 'tool_use', name: b.name, id: b.id, input_preview: inp })
+      }
+    }
+    phase.blocks = summary
+  } else if (msg.type === 'user') {
+    const blocks = msg.message?.content || []
+    const summary = []
+    for (const b of blocks) {
+      if (b.type === 'tool_result') {
+        const c = Array.isArray(b.content) ? b.content : []
+        const txt = c.map(x => (x && x.type === 'text' ? x.text : '')).join('').slice(0, 300)
+        summary.push({ k: 'tool_result', tool_use_id: b.tool_use_id, is_error: !!b.is_error, preview: txt })
+      }
+    }
+    phase.blocks = summary
   } else if (msg.type === 'result') {
     resultMsg = msg
+    phase.is_error = msg.is_error
+    phase.api_error_status = msg.api_error_status || null
+    phase.duration_ms = msg.duration_ms
+    phase.num_turns = msg.num_turns
   }
+  phases.push(phase)
 }
 
 let changed = []
@@ -870,13 +911,22 @@ try {
 
 console.log('__ROMY_RESULT__' + JSON.stringify({
   assistant: lastAssistant,
+  all_assistant: allAssistant,
   changed,
+  phases,
+  env_probe: {
+    has_oauth: !!process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    has_api_key: !!process.env.ANTHROPIC_API_KEY,
+    oauth_prefix: (process.env.CLAUDE_CODE_OAUTH_TOKEN || '').slice(0, 12),
+    api_key_prefix: (process.env.ANTHROPIC_API_KEY || '').slice(0, 12),
+  },
   result: resultMsg ? {
     subtype: resultMsg.subtype,
     is_error: resultMsg.is_error,
     api_error_status: resultMsg.api_error_status,
     duration_ms: resultMsg.duration_ms,
     total_cost_usd: resultMsg.total_cost_usd,
+    num_turns: resultMsg.num_turns,
   } : null,
 }))
 `
@@ -979,6 +1029,28 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       result.error_step = 'coder_returned_not_ok'
       result.error = `exitCode=${run.exitCode} is_error=${parsed.result?.is_error ?? '?'} uploaded=${uploaded.length} discovered=${discoveredFiles.length} changed=${changedFiles.length}`
     }
+
+    result.transcript_path = await saveBuildTranscript({
+      slug,
+      phone: null,
+      ok,
+      was_warm: wasWarm,
+      is_first_build: isFirstBuild,
+      duration_ms: result.duration_ms,
+      cost_usd: result.cost_usd,
+      user_message: userMessage,
+      log: log || [],
+      agent: {
+        exit_code: run.exitCode,
+        parsed,
+        assistant_text: parsed.assistant ?? null,
+        stdout: run.stdout,
+        stderr: run.stderr,
+      },
+      error_step: result.error_step ?? null,
+      error_msg: result.error ?? null,
+    }).catch(() => null)
+
     if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl && !ok) {
       const fallback = await runFastFirstBuild(input)
       fallback.log = [
@@ -986,11 +1058,32 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
         { step: 'ai_first_build_failed_fallback_used', ms: Date.now() - t0 },
         ...(fallback.log || []),
       ]
+      fallback.transcript_path = result.transcript_path
       return fallback
     }
     return result
   } catch (err) {
     mark('error', { step: currentStep, message: (err as Error).message })
+    const exceptionTranscriptPath = await saveBuildTranscript({
+      slug,
+      phone: null,
+      ok: false,
+      was_warm: wasWarm,
+      is_first_build: isFirstBuild,
+      duration_ms: Date.now() - t0,
+      cost_usd: null,
+      user_message: userMessage,
+      log: log || [],
+      agent: {
+        exit_code: null,
+        parsed: null,
+        assistant_text: null,
+        stdout: '',
+        stderr: '',
+      },
+      error_step: currentStep,
+      error_msg: (err as Error).message,
+    }).catch(() => null)
     if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl) {
       const fallback = await runFastFirstBuild(input)
       fallback.log = [
@@ -998,6 +1091,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
         { step: 'ai_first_build_exception_fallback_used', ms: Date.now() - t0, detail: { step: currentStep } },
         ...(fallback.log || []),
       ]
+      fallback.transcript_path = exceptionTranscriptPath
       return fallback
     }
     return {
@@ -1012,6 +1106,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       error: (err as Error).message,
       error_step: currentStep,
       log,
+      transcript_path: exceptionTranscriptPath,
     }
   } finally {
     if (sandbox) {

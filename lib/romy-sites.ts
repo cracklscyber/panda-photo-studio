@@ -160,7 +160,7 @@ async function extractBusinessName(userMessage: string): Promise<string | null> 
   const client = anthropicClient()
   try {
     const res = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 40,
       system:
         'Du extrahierst aus einer deutschen Nachricht eine kurze Bezeichnung fürs Geschäft, die als URL-Subdomain taugt.\n' +
