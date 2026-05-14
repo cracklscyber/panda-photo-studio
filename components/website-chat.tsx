@@ -4,12 +4,6 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AuthModal } from './auth-modal'
 import { browserSupabase } from '@/lib/supabase-browser'
-import {
-  PENDING_TEMPLATE_KEY,
-  buildTemplateChatMessage,
-  getTemplateById,
-  stripTemplateMarker,
-} from '@/lib/templates'
 
 declare global {
   interface Window {
@@ -108,9 +102,7 @@ function parseUserMessage(content: string): { text: string; imageUrl?: string } 
   const markerRe = /\[ROMY_USER_IMAGE:([^\]]+)\]/
   const match = content.match(markerRe)
   const imageUrl = match ? match[1] : undefined
-  let text = content.replace(markerRe, '').replace(/\n{3,}/g, '\n\n').trim()
-  // Strip [ROMY_TEMPLATE:id] marker so the user-visible bubble shows clean text.
-  text = stripTemplateMarker(text).text
+  const text = content.replace(markerRe, '').replace(/\n{3,}/g, '\n\n').trim()
   return { text, imageUrl }
 }
 
@@ -208,7 +200,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingImage, setPendingImage] = useState<{ dataUrl: string; name: string } | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
-  const [historyLoaded, setHistoryLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -252,8 +243,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
         })
       } catch {
         // keep local messages
-      } finally {
-        if (!cancelled) setHistoryLoaded(true)
       }
     }
     loadStoredHistory()
@@ -261,31 +250,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
       cancelled = true
     }
   }, [open, sessionId])
-
-  // Consume a pending template selection from the landing page (localStorage key).
-  // The template selection is sent as the first user message with a marker the
-  // server recognizes; the marker is stripped from the visible bubble. Only
-  // fires for fresh sessions (no existing user messages) and once per session.
-  useEffect(() => {
-    if (!open || !sessionId || !historyLoaded || isSending) return
-    if (typeof window === 'undefined') return
-    const pendingId = window.localStorage.getItem(PENDING_TEMPLATE_KEY)
-    if (!pendingId) return
-    const hasAnyUserMessage = messages.some((m) => m.role === 'user')
-    if (hasAnyUserMessage) {
-      window.localStorage.removeItem(PENDING_TEMPLATE_KEY)
-      return
-    }
-    const template = getTemplateById(pendingId)
-    if (!template) {
-      window.localStorage.removeItem(PENDING_TEMPLATE_KEY)
-      return
-    }
-    // Idempotent consume — remove before send so a re-render mid-stream cannot
-    // double-send the same template message.
-    window.localStorage.removeItem(PENDING_TEMPLATE_KEY)
-    void sendMessage(buildTemplateChatMessage(template), { isOnboarding: true })
-  }, [open, sessionId, historyLoaded, isSending, messages])
 
   useEffect(() => {
     let cancelled = false
