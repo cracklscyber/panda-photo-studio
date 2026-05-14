@@ -555,6 +555,19 @@ export async function POST(req: NextRequest) {
 
     const history = await loadHistory(sessionKey)
 
+    // Bypass-Schutz: Wenn der User die "Möchtest du starten?"-Quick-Reply
+    // überspringt und direkt frei tippt, ist die Server-History leer und
+    // keine State-Machine-Bedingung greift — alles fällt durch zum LLM.
+    // Wir seedezen deshalb still die Onboarding-Frage in die History, damit
+    // `previousAssistantAskedForBusinessInfo()` matcht und die User-Nachricht
+    // als Firmenbeschreibung behandelt wird (→ IMAGE_INTRO_QUESTION).
+    if (history.length === 0) {
+      await appendAssistantOnly(sessionKey, ONBOARDING_JA_REPLY).catch((err) =>
+        console.error('seed onboarding history failed:', err)
+      )
+      history.push({ role: 'assistant', content: ONBOARDING_JA_REPLY })
+    }
+
     // Harte Regel: während Bild-Generierung oder Build noch läuft, beantwortet
     // Romy ungeduldige Nachfragen ("wie lange noch?", "hallo?") freundlich mit
     // "Ich bin dabei, einen Moment." statt sie als Inhalt durch die State-
