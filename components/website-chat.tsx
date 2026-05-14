@@ -4,6 +4,12 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AuthModal } from './auth-modal'
 import { browserSupabase } from '@/lib/supabase-browser'
+import {
+  PENDING_TEMPLATE_KEY,
+  buildTemplateChatMessage,
+  getTemplateById,
+  stripTemplateMarker,
+} from '@/lib/templates'
 
 declare global {
   interface Window {
@@ -102,7 +108,9 @@ function parseUserMessage(content: string): { text: string; imageUrl?: string } 
   const markerRe = /\[ROMY_USER_IMAGE:([^\]]+)\]/
   const match = content.match(markerRe)
   const imageUrl = match ? match[1] : undefined
-  const text = content.replace(markerRe, '').replace(/\n{3,}/g, '\n\n').trim()
+  let text = content.replace(markerRe, '').replace(/\n{3,}/g, '\n\n').trim()
+  // Strip [ROMY_TEMPLATE:id] marker so the user-visible bubble shows clean text.
+  text = stripTemplateMarker(text).text
   return { text, imageUrl }
 }
 
@@ -150,21 +158,44 @@ function loadCachedMessages(sessionId: string): Message[] | null {
   }
 }
 
-function trackCompleteRegistration(method: string) {
+// Auth ist seit 32c2903 der Pflicht-Gate vor dem Chat. CompleteRegistration
+// signalisiert nur noch "User hat die Gate passiert" — das ist NICHT der
+// qualifizierte Lead. Der echte Lead feuert in `trackFirstBuildLead()`, sobald
+// Romy den ersten Entwurf live im Chat geliefert hat (`type: 'final'`).
+function trackRegistration(method: string) {
   if (typeof window === 'undefined') return
   const key = `romy-registration-tracked:${getSessionId()}`
   if (window.localStorage.getItem(key)) return
   if (!window.fbq) return
   window.localStorage.setItem(key, '1')
-  window.fbq?.('track', 'Lead', {
-    content_name: 'account_after_website_build',
-    content_category: 'Romy Qualified Lead',
-    method,
-  })
   window.fbq?.('track', 'CompleteRegistration', {
-    content_name: 'account_after_website_build',
+    content_name: 'gate_passed_before_chat',
     method,
   })
+}
+
+function trackFirstBuildLead() {
+  if (typeof window === 'undefined') return
+  const key = `romy-lead-fired:${getSessionId()}`
+  if (window.localStorage.getItem(key)) return
+  if (!window.fbq) return
+  window.localStorage.setItem(key, '1')
+  window.fbq?.('track', 'Lead', {
+    content_name: 'first_website_build',
+    content_category: 'Romy Qualified Lead',
+  })
+}
+
+// Chat-API ist seit 32c2903 + Backend-Auth-Fix nur für angemeldete User.
+// Jeder API-Call muss den Supabase-Access-Token im Authorization-Header
+// mitschicken, sonst antwortet die API mit 401.
+async function getAuthToken(): Promise<string | null> {
+  try {
+    const { data } = await browserSupabase().auth.getSession()
+    return data.session?.access_token || null
+  } catch {
+    return null
+  }
 }
 
 export function WebsiteChat({ className = '' }: WebsiteChatProps) {
@@ -177,6 +208,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingImage, setPendingImage] = useState<{ dataUrl: string; name: string } | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -203,8 +235,10 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
     let cancelled = false
     async function loadStoredHistory() {
       try {
+        const token = await getAuthToken()
         const res = await fetch(`/api/chat?sessionId=${encodeURIComponent(sessionId)}`, {
           cache: 'no-store',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         })
         const data = (await res.json()) as {
           messages?: Array<{ role: 'user' | 'assistant'; content: string }>
@@ -218,6 +252,8 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
         })
       } catch {
         // keep local messages
+      } finally {
+        if (!cancelled) setHistoryLoaded(true)
       }
     }
     loadStoredHistory()
@@ -225,6 +261,31 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
       cancelled = true
     }
   }, [open, sessionId])
+
+  // Consume a pending template selection from the landing page (localStorage key).
+  // The template selection is sent as the first user message with a marker the
+  // server recognizes; the marker is stripped from the visible bubble. Only
+  // fires for fresh sessions (no existing user messages) and once per session.
+  useEffect(() => {
+    if (!open || !sessionId || !historyLoaded || isSending) return
+    if (typeof window === 'undefined') return
+    const pendingId = window.localStorage.getItem(PENDING_TEMPLATE_KEY)
+    if (!pendingId) return
+    const hasAnyUserMessage = messages.some((m) => m.role === 'user')
+    if (hasAnyUserMessage) {
+      window.localStorage.removeItem(PENDING_TEMPLATE_KEY)
+      return
+    }
+    const template = getTemplateById(pendingId)
+    if (!template) {
+      window.localStorage.removeItem(PENDING_TEMPLATE_KEY)
+      return
+    }
+    // Idempotent consume — remove before send so a re-render mid-stream cannot
+    // double-send the same template message.
+    window.localStorage.removeItem(PENDING_TEMPLATE_KEY)
+    void sendMessage(buildTemplateChatMessage(template), { isOnboarding: true })
+  }, [open, sessionId, historyLoaded, isSending, messages])
 
   useEffect(() => {
     let cancelled = false
@@ -279,7 +340,7 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   }, [])
 
   function handleAuthSuccess() {
-    trackCompleteRegistration('email')
+    trackRegistration('email')
     setAuthModalOpen(false)
     if (typeof window !== 'undefined') {
       history.replaceState(
@@ -407,9 +468,13 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
     }
 
     try {
+      const token = await getAuthToken()
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           sessionId,
           message: messageText,
@@ -471,6 +536,9 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
             appendAssistant(event.text, { siteUrl: event.siteUrl })
             waitingOnBuild = false
             setIsBuilding(false)
+            // Meta Lead: erst beim ersten erfolgreichen Build feuern, nicht
+            // schon beim Anmelden. Dedupe via localStorage in der Helperfn.
+            trackFirstBuildLead()
           } else if (event.type === 'error' && event.text) {
             appendAssistant(event.text)
             waitingOnBuild = false

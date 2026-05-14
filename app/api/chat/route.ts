@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
 import {
@@ -42,6 +43,25 @@ import {
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
+
+// Auth-Gate für /api/chat: Chat ist seit 32c2903 nur für angemeldete User.
+// Der Frontend-Gate (AuthModal vor #chat) reicht nicht — die API muss selbst
+// prüfen, sonst kann jeder mit einer Session-ID direkt mit Romy chatten.
+async function requireAuthUser(req: NextRequest): Promise<{ userId: string } | null> {
+  const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim()
+  if (!token) return null
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim()
+    )
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) return null
+    return { userId: data.user.id }
+  } catch {
+    return null
+  }
+}
 
 const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
 const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
@@ -477,6 +497,11 @@ function streamResponse(
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuthUser(req)
+  if (!auth) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
   let body: {
     sessionId?: unknown
     message?: unknown
@@ -545,6 +570,38 @@ export async function POST(req: NextRequest) {
         const reply = answer === 'ja' ? ONBOARDING_JA_REPLY : ONBOARDING_NEIN_REPLY
         await resetHistory(sessionKey, loggedUserMessage, reply).catch(() => {})
         await emit({ type: 'reply', text: reply, intent: 'chat' })
+        return
+      }
+
+      // Template-getriebenes Onboarding: Landing-Galerie schickt eine erste
+      // User-Nachricht mit `[ROMY_TEMPLATE:id] ...`. Wir strippen den Marker,
+      // resetten die Session und antworten mit der Standard-Business-Frage,
+      // damit die existierende Image-Intro-Detection (Erzähl mir bitte etwas
+      // über deine Firma) auf die nächste User-Antwort greift.
+      const templateMarkerMatch = text.match(/^\[ROMY_TEMPLATE:([^\]]+)\]\s*/)
+      if (templateMarkerMatch) {
+        const cleanedText = text.slice(templateMarkerMatch[0].length).trim()
+        const cleanedLoggedMessage = loggedUserMessage.startsWith('[')
+          ? loggedUserMessage.replace(templateMarkerMatch[0], '').trim() || cleanedText
+          : cleanedText
+        const existingCustomer = await findCustomer(sessionKey).catch(() => null)
+        const canReset =
+          !existingCustomer ||
+          (!hasCompletedFirstBuild(existingCustomer) &&
+            !isAuthenticated(existingCustomer) &&
+            !existingCustomer.stripe_customer_id)
+        if (canReset) {
+          await resetSite(sessionKey).catch((err) =>
+            console.error('resetSite failed:', err)
+          )
+          await resetCustomer(sessionKey).catch((err) =>
+            console.error('resetCustomer failed:', err)
+          )
+        }
+        const templateReply =
+          'Schöner Stil, den merke ich mir. Erzähl mir bitte etwas über deine Firma — was machst du, wie heißt dein Geschäft und in welcher Stadt bist du?'
+        await resetHistory(sessionKey, cleanedLoggedMessage, templateReply).catch(() => {})
+        await emit({ type: 'reply', text: templateReply, intent: 'chat' })
         return
       }
     }
@@ -1016,6 +1073,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuthUser(req)
+  if (!auth) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
   const sessionId = cleanSessionId(req.nextUrl.searchParams.get('sessionId'))
   if (!sessionId) {
     return NextResponse.json({ messages: [] })
