@@ -5,13 +5,17 @@ import { createPortal } from 'react-dom'
 import type { Session } from '@supabase/supabase-js'
 import { browserSupabase } from '@/lib/supabase-browser'
 
+type Mode = 'login' | 'register' | 'forgot' | 'forgotSent' | 'confirmSent'
+
+type Intent = 'first-time' | 'returning'
+
 type Props = {
   sessionId: string
   onSuccess: () => void
   onClose: () => void
+  initialMode?: Extract<Mode, 'login' | 'register'>
+  intent?: Intent
 }
-
-type Mode = 'login' | 'register' | 'forgot' | 'forgotSent' | 'confirmSent'
 
 declare global {
   interface Window {
@@ -21,8 +25,14 @@ declare global {
 
 const PROD_ORIGIN = 'https://halloromy.com'
 
-export function AuthModal({ sessionId, onSuccess, onClose }: Props) {
-  const [mode, setMode] = useState<Mode>('login')
+export function AuthModal({
+  sessionId,
+  onSuccess,
+  onClose,
+  initialMode = 'login',
+  intent = 'returning',
+}: Props) {
+  const [mode, setMode] = useState<Mode>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -297,6 +307,8 @@ export function AuthModal({ sessionId, onSuccess, onClose }: Props) {
             ? 'Bestätigung gesendet'
             : isForgot
             ? 'Passwort zurücksetzen'
+            : intent === 'first-time'
+            ? 'Lass uns starten'
             : 'Anmelden oder Konto erstellen'}
         </h2>
         <p className="mt-2 text-sm text-neutral-600">
@@ -306,6 +318,8 @@ export function AuthModal({ sessionId, onSuccess, onClose }: Props) {
             ? 'Bitte bestätige deine E-Mail-Adresse über den Link, den wir dir geschickt haben.'
             : isForgot
             ? 'Trag deine E-Mail ein, wir schicken dir einen Link zum neuen Passwort.'
+            : intent === 'first-time'
+            ? 'Trag deine E-Mail ein, dann legt Romy direkt los. Wir schicken dir deinen Entwurf auch per Mail – damit du ihn immer wiederfindest.'
             : 'Damit deine Seite und alle Änderungen erhalten bleiben, und ich dich beim nächsten Mal wiedererkenne.'}
         </p>
 

@@ -3,11 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AuthModal } from './auth-modal'
-import {
-  QualificationModal,
-  isAlreadyQualified,
-  getStoredBusinessName,
-} from './qualification-modal'
+import { browserSupabase } from '@/lib/supabase-browser'
 
 declare global {
   interface Window {
@@ -173,9 +169,6 @@ function trackCompleteRegistration(method: string) {
 
 export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   const [open, setOpen] = useState(false)
-  const [qualificationOpen, setQualificationOpen] = useState(false)
-  const [qualified, setQualified] = useState(false)
-  const [businessName, setBusinessName] = useState('')
   const [sessionId, setSessionId] = useState('')
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
@@ -234,11 +227,8 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   }, [open, sessionId])
 
   useEffect(() => {
-    const alreadyQualified = isAlreadyQualified()
-    if (alreadyQualified) {
-      setQualified(true)
-      setBusinessName(getStoredBusinessName())
-    }
+    let cancelled = false
+    let currentAuthed = false
 
     function syncFromHash() {
       const wantsChat = window.location.hash === '#chat'
@@ -246,31 +236,51 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
         setOpen(false)
         return
       }
-      if (isAlreadyQualified()) {
-        setQualified(true)
-        setBusinessName(getStoredBusinessName())
+      if (currentAuthed) {
         setOpen(true)
-      } else {
-        // Hash entfernen, damit der Chat nicht "hängt" — Modal übernimmt
-        history.replaceState(
-          null,
-          '',
-          window.location.pathname + window.location.search
-        )
-        setOpen(false)
-        setQualificationOpen(true)
+        return
       }
+      // Hash entfernen, damit der Chat nicht "hängt" — AuthModal übernimmt
+      history.replaceState(
+        null,
+        '',
+        window.location.pathname + window.location.search
+      )
+      setOpen(false)
+      setAuthModalOpen(true)
     }
-    syncFromHash()
+
+    async function init() {
+      try {
+        const { data } = await browserSupabase().auth.getSession()
+        if (cancelled) return
+        currentAuthed = !!data.session
+      } catch {
+        currentAuthed = false
+      }
+      if (!cancelled) syncFromHash()
+    }
+
+    init()
     window.addEventListener('hashchange', syncFromHash)
-    return () => window.removeEventListener('hashchange', syncFromHash)
+
+    const { data: authSub } = browserSupabase().auth.onAuthStateChange(
+      (_event, session) => {
+        if (cancelled) return
+        currentAuthed = !!session
+      }
+    )
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('hashchange', syncFromHash)
+      authSub.subscription.unsubscribe()
+    }
   }, [])
 
-  function handleQualified(name: string) {
-    setQualified(true)
-    setBusinessName(name)
-    setQualificationOpen(false)
-    // Direkt in den Chat
+  function handleAuthSuccess() {
+    trackCompleteRegistration('email')
+    setAuthModalOpen(false)
     if (typeof window !== 'undefined') {
       history.replaceState(
         null,
@@ -405,8 +415,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
           message: messageText,
           isOnboarding: options.isOnboarding === true,
           imageDataUrl: attachedImage?.dataUrl,
-          qualified: qualified || undefined,
-          businessName: businessName || undefined,
         }),
       })
 
@@ -467,15 +475,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
             appendAssistant(event.text)
             waitingOnBuild = false
             setIsBuilding(false)
-          } else if (event.type === 'auth_required' && event.text) {
-            appendAssistant(event.text)
-            setAuthModalOpen(true)
-            waitingOnBuild = false
-            setIsBuilding(false)
-          } else if (event.type === 'auth_prompt') {
-            setAuthModalOpen(true)
-            waitingOnBuild = false
-            setIsBuilding(false)
           }
         }
       }
@@ -504,13 +503,18 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
   }
 
   if (!open) {
-    return (
-      <QualificationModal
-        open={qualificationOpen}
-        onQualified={handleQualified}
-        onClose={() => setQualificationOpen(false)}
-      />
-    )
+    if (authModalOpen && sessionId) {
+      return (
+        <AuthModal
+          sessionId={sessionId}
+          onSuccess={handleAuthSuccess}
+          onClose={() => setAuthModalOpen(false)}
+          initialMode="register"
+          intent="first-time"
+        />
+      )
+    }
+    return null
   }
 
   return (
@@ -776,24 +780,6 @@ export function WebsiteChat({ className = '' }: WebsiteChatProps) {
           </div>
         </form>
       </div>
-      {authModalOpen && sessionId && (
-        <AuthModal
-          sessionId={sessionId}
-          onSuccess={() => {
-            trackCompleteRegistration('email')
-            setAuthModalOpen(false)
-            setMessages((current) => [
-              ...current,
-              {
-                id: `romy-${Date.now()}`,
-                role: 'assistant',
-                content: 'Danke! Du bist jetzt angemeldet, wir machen direkt weiter. Was soll ich an deiner Seite ändern?',
-              },
-            ])
-          }}
-          onClose={() => setAuthModalOpen(false)}
-        />
-      )}
     </div>
   )
 }

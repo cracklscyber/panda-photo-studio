@@ -51,9 +51,6 @@ const ACK_FIRST_DIRECT =
 const ACK_FOLLOWUP =
   'Mach ich. Bleib bitte hier im Chat und schließe diese Seite nicht, bis ich fertig bin.'
 
-const AUTH_REQUIRED_REPLY =
-  'Damit du deine Seite behältst und ich sie weiter für dich pflegen kann, lege bitte kurz dein Kundenkonto an. Das geht in Sekunden mit Google oder E-Mail. Danach speichere ich deinen Chatverlauf, deine Entwürfe und deine Website, und wir machen genau hier weiter.'
-
 const ONBOARDING_JA_REPLY =
   'Alles klar. Erzähl mir bitte etwas über deine Firma. Was genau machst du?'
 const ONBOARDING_NEIN_REPLY =
@@ -383,8 +380,6 @@ type StreamEvent =
   | { type: 'ack'; text: string }
   | { type: 'final'; text: string; siteUrl?: string; intent: 'build' }
   | { type: 'error'; text: string; error?: string }
-  | { type: 'auth_required'; text: string }
-  | { type: 'auth_prompt' }
 
 async function runImageGenerationStep(opts: {
   sessionKey: string
@@ -554,20 +549,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const customer = await ensureCustomer(sessionKey).catch((err) => {
+    await ensureCustomer(sessionKey).catch((err) => {
       console.error('ensureCustomer failed:', err)
-      return null
     })
-
-    if (
-      customer &&
-      hasCompletedFirstBuild(customer) &&
-      !isAuthenticated(customer)
-    ) {
-      await appendTurn(sessionKey, loggedUserMessage, AUTH_REQUIRED_REPLY).catch(() => {})
-      await emit({ type: 'auth_required', text: AUTH_REQUIRED_REPLY })
-      return
-    }
 
     const history = await loadHistory(sessionKey)
 
