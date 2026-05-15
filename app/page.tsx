@@ -4,6 +4,7 @@ import { BookingModal } from '@/components/booking-modal'
 import { WebsiteChat } from '@/components/website-chat'
 import { AccountMenu } from '@/components/account-menu'
 import { AuthReturnGuard } from '@/components/auth-return-guard'
+import { TemplateGallery } from '@/components/template-gallery'
 
 const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
 
@@ -12,7 +13,7 @@ export default function Home() {
     <main className="min-h-screen bg-white text-[#1a1714]">
       <AuthReturnGuard />
       {/* Nav */}
-      <header className="border-b border-black/5 bg-white/80 backdrop-blur-xl">
+      <header className="relative z-50 border-b border-black/5 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
             <span className="relative inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-black/8 bg-white/65 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.85)] backdrop-blur-xl">
@@ -188,6 +189,8 @@ export default function Home() {
 
       <WebsiteChat />
 
+      <TemplateGallery />
+
       <section id="how" className="mx-auto max-w-5xl px-6 py-20 text-[#1a1714]">
         <h2 className="mb-12 text-center text-3xl font-semibold tracking-tight">So funktioniert's</h2>
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
@@ -225,7 +228,7 @@ export default function Home() {
       <section id="presence" className="mx-auto max-w-3xl px-6 py-20 text-center text-[#1a1714]">
         <h2 className="mb-6 text-3xl font-semibold tracking-tight">Schreiben statt klicken.</h2>
         <p className="mb-10 text-lg text-[#1a1714]/65">
-          Keine Tools, keine Templates, keine Briefings. Du erzählst Romy was du machst, sie baut deine Seite. Willst du später was ändern, schreibst du ihr eine Nachricht. So einfach wie eine WhatsApp.
+          Such dir ein Template aus oder erzähl Romy einfach, was du machst. Sie baut deine Seite. Willst du später was ändern, schreibst du ihr eine Nachricht. So einfach wie eine WhatsApp.
         </p>
         <a
           href="#chat"
