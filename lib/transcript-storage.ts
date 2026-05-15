@@ -11,16 +11,12 @@ function sb(): SupabaseClient {
   )
 }
 
-let bucketChecked = false
-async function ensureBucket(client: SupabaseClient): Promise<void> {
-  if (bucketChecked) return
-  const { data, error } = await client.storage.listBuckets()
-  if (error) return
-  if (!data.find((b) => b.name === BUCKET)) {
-    await client.storage.createBucket(BUCKET, { public: false }).catch(() => {})
-  }
-  bucketChecked = true
-}
+// Der Bucket existiert in Prod längst. Der frühere listBuckets()-Roundtrip
+// lief bei jedem Cold-Start (also bei jedem Build) und kostete im knappen
+// Cleanup-Fenster nach einem Timeout wertvolle Sekunden — wodurch der
+// Transcript-Save oft gar nicht mehr fertig wurde. Wir verzichten auf den
+// Check; ein fehlender Bucket würde ohnehin beim upload() einen Fehler
+// werfen, den wir jetzt loggen.
 
 export interface BuildTranscript {
   slug: string
@@ -55,7 +51,6 @@ function truncate(s: string, max: number): string {
 export async function saveBuildTranscript(t: BuildTranscript): Promise<string | null> {
   try {
     const client = sb()
-    await ensureBucket(client)
 
     const safe: BuildTranscript = {
       ...t,
@@ -78,9 +73,13 @@ export async function saveBuildTranscript(t: BuildTranscript): Promise<string | 
       contentType: 'application/json',
       upsert: false,
     })
-    if (error) return null
+    if (error) {
+      console.error('saveBuildTranscript upload failed:', error.message, objectPath)
+      return null
+    }
     return objectPath
-  } catch {
+  } catch (e) {
+    console.error('saveBuildTranscript threw:', (e as Error).message)
     return null
   }
 }

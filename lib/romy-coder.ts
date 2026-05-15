@@ -11,7 +11,13 @@ import { saveBuildTranscript } from './transcript-storage'
 const WORKSPACE = '/home/user/workspace'
 const CLAUDE_HOME = '/home/user/romy-claude'
 const ROMY_E2B_TEMPLATE = process.env.ROMY_E2B_TEMPLATE?.trim() || ''
-const AGENT_TIMEOUT_MS = 285_000
+// Bewusst deutlich unter dem Outer-Race (BUILD_TIMEOUT_MS=295s in
+// app/api/chat/route.ts) und dem Vercel-Limit (maxDuration=300s). Der Agent
+// muss früh genug aufhören, damit danach noch File-Upload UND der innere
+// saveBuildTranscript (mit vollem stdout/stderr/parsed) laufen können, bevor
+// irgendein Notnagel-Timeout greift. Bei 285s überholte der Outer-Timeout den
+// inneren Save → gar kein Transcript bei Build-Timeouts.
+const AGENT_TIMEOUT_MS = 240_000
 const NPM_INSTALL_TIMEOUT_MS = 90_000
 const AGENT_MAX_TURNS = 8
 const REQUIRE_CLAUDE_FRONTEND_DESIGN =
