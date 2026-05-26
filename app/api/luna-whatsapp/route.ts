@@ -18,6 +18,9 @@ import { downloadSiteFile, sitePreviewUrl } from '@/lib/supabase-storage'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
+const STRIPE_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
+const CAL_URL = 'https://cal.com/luna.ai/15min'
+
 const ACK_FIRST =
   'Alles klar, ich leg jetzt los. Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
@@ -25,11 +28,10 @@ const ACK_FOLLOWUP =
 
 function buildLimitMessage(_phone: string): string {
   return [
-    'Du hast deine kostenlosen Änderungen aufgebraucht. Deine Seite bleibt natürlich erhalten.',
+    'Deine kostenlosen Änderungen sind aufgebraucht. Für 39 Euro im Monat läuft alles weiter: unbegrenzte Änderungen vornehmen, deine Seite live schalten und eine eigene Domain bekommen. Kein Vertrag, keine Mindestlaufzeit.',
     '',
-    'Wenn ich weiter für dich bauen und Änderungen umsetzen soll, aktiviere Hallo Luna für 29€/Monat. Das ist jederzeit kündbar.',
-    '',
-    'Ich leite das an mein Team weiter, dann bekommst du den nächsten Schritt sauber zugeschickt.',
+    `Du kannst direkt hier starten: ${STRIPE_URL}`,
+    `Oder erst einen kurzen Termin buchen: ${CAL_URL}`,
   ].join('\n')
 }
 

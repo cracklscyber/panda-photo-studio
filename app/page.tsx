@@ -4,7 +4,7 @@ import { BookingModal } from '@/components/booking-modal'
 import { AccountMenu } from '@/components/account-menu'
 import { WhatsAppLink } from '@/components/whatsapp-link'
 
-const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
+const CAL_BOOKING_URL = 'https://cal.com/luna.ai/15min'
 const WHATSAPP_URL = 'https://wa.me/4915229227823'
 
 const industries = [
