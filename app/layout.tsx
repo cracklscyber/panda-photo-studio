@@ -13,8 +13,8 @@ const fraunces = Fraunces({
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
 
 export const metadata: Metadata = {
-  title: 'Romy AI — Deine Website per Chat',
-  description: 'Romy baut und pflegt deine Website direkt im Chat. Kein Code, keine Vorlagen zum Ausfüllen, einfach schreiben.',
+  title: 'Hallo Luna — Deine Website per Chat',
+  description: 'Luna baut dir eine moderne neue Website direkt im Chat. Kein Baukasten, kein Agenturtermin, einfach schreiben.',
 }
 
 export const viewport: Viewport = {

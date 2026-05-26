@@ -1,7 +1,7 @@
 const VERCEL_API = 'https://api.vercel.com'
 
 function apexDomain(): string {
-  return (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+  return (process.env.ROMY_APEX_DOMAIN || 'halloluna.net')
     .trim()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')

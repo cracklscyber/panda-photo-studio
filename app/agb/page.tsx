@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-export const metadata = { title: 'Nutzungsbedingungen — Romy AI' }
+export const metadata = { title: 'Nutzungsbedingungen — Hallo Luna' }
 
 export default function AGB() {
   return (
@@ -8,7 +8,7 @@ export default function AGB() {
       <header className="border-b border-neutral-200/60">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            Romy<span className="text-neutral-400">.ai</span>
+            Hallo Luna
           </Link>
           <Link href="/" className="text-sm text-neutral-600 hover:text-neutral-900">← Zurück</Link>
         </div>
@@ -20,13 +20,13 @@ export default function AGB() {
 
         <Section title="1. Geltungsbereich">
           <p>
-            Diese Nutzungsbedingungen gelten für die Nutzung des Website-Chat-Service &quot;Romy&quot; sowie der Website halloromy.com, betrieben von ROMIAI, Berlin (&quot;Anbieterin&quot;).
+            Diese Nutzungsbedingungen gelten für die Nutzung des Website-Chat-Service &quot;Hallo Luna&quot; sowie der Website halloluna.net, betrieben von Luna AI, Berlin (&quot;Anbieterin&quot;).
           </p>
         </Section>
 
         <Section title="2. Leistungsbeschreibung">
           <p>
-            Romy ist ein KI-gestützter Assistent, der über den Website-Chat erreichbar ist. Romy unterstützt bei der Erstellung und Pflege einfacher Websites und digitaler Inhalte. Die Anbieterin behält sich vor, den Funktionsumfang jederzeit zu ändern oder zu erweitern.
+            Luna ist ein KI-gestützter Assistent, der über den Website-Chat erreichbar ist. Luna unterstützt bei der Erstellung und Aktualisierung einfacher Websites und digitaler Inhalte. Die Anbieterin behält sich vor, den Funktionsumfang jederzeit zu ändern oder zu erweitern.
           </p>
         </Section>
 
@@ -38,7 +38,7 @@ export default function AGB() {
 
         <Section title="4. Nutzungsrechte an erstellten Inhalten">
           <p>
-            Inhalte (z.B. Produktfotos), die durch Romy erstellt werden, dürfen von Nutzer:innen frei für eigene geschäftliche und private Zwecke verwendet werden. Die Anbieterin übernimmt keine Haftung für die Verwendung der erstellten Inhalte durch Dritte.
+            Inhalte (z.B. Produktfotos), die durch Luna erstellt werden, dürfen von Nutzer:innen frei für eigene geschäftliche und private Zwecke verwendet werden. Die Anbieterin übernimmt keine Haftung für die Verwendung der erstellten Inhalte durch Dritte.
           </p>
         </Section>
 

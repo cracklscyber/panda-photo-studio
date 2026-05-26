@@ -96,6 +96,10 @@ export default function AuthCallbackPage() {
           window.localStorage.setItem('romy-web-session', linkData.canonicalSessionId)
         }
 
+        // Lead-Tracking ist seit dem Auth-Gate (32c2903) ans erste fertige Build
+        // gekoppelt — wir feuern es in `website-chat.tsx` aus dem `final`-Event.
+        // CompleteRegistration bleibt hier als Defensiv-Fire für den Legacy-
+        // Pfad (User hatte vor dem Gate gebaut und meldet sich jetzt an).
         const trackingSessionId = linkData.canonicalSessionId || sessionId
         const trackingKey = `romy-registration-tracked:${trackingSessionId}`
         if (
@@ -105,13 +109,8 @@ export default function AuthCallbackPage() {
           window.fbq
         ) {
           window.localStorage.setItem(trackingKey, '1')
-          window.fbq?.('track', 'Lead', {
-            content_name: 'account_after_website_build',
-            content_category: 'Romy Qualified Lead',
-            method: provider,
-          })
           window.fbq?.('track', 'CompleteRegistration', {
-            content_name: 'account_after_website_build',
+            content_name: 'gate_passed_before_chat',
             method: provider,
           })
         }

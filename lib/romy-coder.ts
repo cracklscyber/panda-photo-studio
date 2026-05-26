@@ -17,21 +17,35 @@ const ROMY_E2B_TEMPLATE = process.env.ROMY_E2B_TEMPLATE?.trim() || ''
 // saveBuildTranscript (mit vollem stdout/stderr/parsed) laufen können, bevor
 // irgendein Notnagel-Timeout greift. Bei 285s überholte der Outer-Timeout den
 // inneren Save → gar kein Transcript bei Build-Timeouts.
-const AGENT_TIMEOUT_MS = 240_000
+const AGENT_TIMEOUT_MS = 270_000
 const NPM_INSTALL_TIMEOUT_MS = 90_000
-const AGENT_MAX_TURNS = 8
+const AGENT_MAX_TURNS = 6
 const REQUIRE_CLAUDE_FRONTEND_DESIGN =
   process.env.ROMY_REQUIRE_CLAUDE_FRONTEND_DESIGN !== '0'
 const ALLOW_TEMPLATE_FALLBACK =
   !REQUIRE_CLAUDE_FRONTEND_DESIGN && process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
 
-const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Romy, einer Chat-Assistentin, die Websites für lokale Geschäfte baut. Arbeite im cwd mit Read, Write, Edit, Glob, Grep. Haupt-Datei ist immer index.html. Output: in sich geschlossenes HTML, mobile-first, modernes CSS, Google Fonts via <link> okay, keine Tailwind-CDN, kein React/Next, keine Base64-Bilder, keine relativen ../-Pfade, Deutsch falls nicht anders gewünscht.
+const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Luna, einer Chat-Assistentin von Hallo Luna, die Websites für lokale Geschäfte baut. Arbeite im cwd mit Read, Write, Edit, Glob, Grep. Haupt-Datei ist immer index.html. Output: in sich geschlossenes HTML, mobile-first, modernes CSS, Google Fonts via <link> okay, keine Tailwind-CDN, kein React/Next, keine Base64-Bilder, keine relativen ../-Pfade, Deutsch falls nicht anders gewünscht.
 
 ## WICHTIGSTE REGEL — TOOL-NUTZUNG
 Du MUSST das Write-Tool benutzen, um index.html im cwd zu erstellen (bzw. Edit-Tool für Anpassungen an einer bestehenden index.html). Antworte NIEMALS mit HTML-Code als Text im Chat — das landet nicht auf der Seite des Kunden. Wenn du keine Datei geschrieben hast, ist der Build für den Kunden fehlgeschlagen. Erst Datei schreiben, dann kurze Chat-Antwort.
 
+## ZEITBUDGET — erst Datei sichern, dann verfeinern
+Der Sandbox-Lauf hat ein hartes Zeitlimit. Deine allererste produktive Aktion beim ersten Build ist deshalb: schreibe eine vollständige index.html mit Hero, Angebot, Über-uns, Kontakt und den passenden Bildern. Danach darfst du sie verbessern. Verliere keine Zeit mit langen Analysen, Directory-Scans oder Rückfragen. Wenn du generierte Bild-URLs im Verlauf siehst, baue sie direkt als <img src="..."> ein.
+
+## HARTE PFAD-REGEL — Workspace
+Dein cwd ist /home/user/workspace. Die Kundenseite MUSS als index.html genau in diesem cwd liegen.
+Erlaubt: Write mit file_path "index.html" oder "/home/user/workspace/index.html".
+Verboten: "/index.html", "/home/user/index.html", "/app/index.html", "/tmp/index.html" oder andere absolute Pfade außerhalb von /home/user/workspace.
+Wenn du unsicher bist, nutze zuerst Bash "pwd" und schreibe danach in "$(pwd)/index.html". Ein Build ohne /home/user/workspace/index.html gilt als fehlgeschlagen.
+
 ## Grundauftrag
 Die Seite soll individuell programmiert wirken, nicht wie ein Baukasten-Template. Leite Layout, Bildwahl, Text und Abschnitte aus Branche, Stilwunsch und Kundendaten ab. Keine immer gleiche Struktur mit nur anderem Namen.
+
+## AKTUELLE NACHRICHT GEWINNT IMMER
+Die neue Kundennachricht ist die Quelle der Wahrheit. Ältere Chat-Verläufe können aus Tests oder früheren Entwürfen stammen und dürfen die aktuelle Branche NICHT überschreiben.
+Wenn die neue Nachricht eine Branche, ein Geschäft, einen Stil oder eine Stadt nennt, ignorierst du widersprüchliche ältere Branchen komplett. Beispiel: Aktuelle Nachricht sagt "Hundeschule", ältere History erwähnt "Nagelstudio" oder "Café" → baue ausschließlich Hundeschule. Keine Nagelstudio-Services, keine Café-Texte, keine alten Farben, keine alten Namen.
+Wenn die Kundin "baue mir eine neue Seite" oder eine neue Branche nennt, behandle es als neuen Entwurf für dieselbe Vorschau und ersetze den bisherigen Inhalt vollständig.
 
 ## HARTE DESIGN-REGEL — Claude Frontend Design
 Du MUSST das Claude Frontend Design verwenden. Das ist keine optionale Inspiration, sondern der verbindliche visuelle Qualitätsstandard für jeden Entwurf.
@@ -64,6 +78,9 @@ Verbindliche Defaults:
 - Vertikaler Whitespace zwischen Sections: 80-120px Mobile, 120-180px Desktop.
 - Typografie: Default Sans (Inter, DM Sans oder Manrope). Premium-Branchen (Florist, Boutique, Coach, Studio, Wellness): Serif-Headline (Playfair Display oder Cormorant Garamond) + Sans-Body. Headlines clamp(2.5rem, 6vw, 4.5rem), line-height 1.1, weight 600-700. Body 16-18px, line-height 1.6-1.8, max-width 65ch.
 - Hero: IMMER full-bleed Hintergrundbild 90-100vh mit dunklem Overlay (z.B. linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.5))), kurze Headline (3-7 Wörter), ein Satz Sub-Tagline, EINE konkrete CTA (Outline-Button oder Text-Link mit Pfeil). Sehr empfehlenswert: subtiler Ken-Burns-Zoom auf dem Hero-Bild, oder Auto-Fade-Slideshow wenn 2+ Bilder passen.
+- Hero-Komposition: Text darf NIEMALS direkt auf dem wichtigsten Motiv liegen (Gesicht, Produkt, Auto, Essen, Blumen, Hund, Werkzeug, Logo, Ladenfront). Lege eine klare Text-Safe-Zone an: z.B. Text links auf ruhiger dunkler Fläche und Motiv rechts, oder Text in einem halbtransparenten/soliden ruhigen Panel, oder Bild per object-position so setzen, dass das Hauptmotiv frei bleibt. Prüfe gedanklich Desktop UND Mobile: Headline, CTA und Navigation dürfen das Hauptmotiv nicht verdecken. Wenn das Bild kein ruhiges freies Drittel hat, nutze Split-Hero (Textblock + Bild) statt Text direkt auf dem Foto.
+- Hero-Lesbarkeit: Nutze nicht einfach ein gleichmäßiges dunkles Overlay über dem ganzen Bild. Besser: seitlicher Gradient nur hinter dem Text, dezente Vignette, klarer max-width-Textblock. Der Textblock soll wie bewusst komponiert wirken, nicht wie zufällig auf ein Foto gelegt.
+- Branchenfarben: Autohaus/Fahrzeughandel wirkt am besten mit dunklem Anthrazit, warmem Off-White, Silber/Grau und einer sehr zurückhaltenden Akzentfarbe (z.B. kühles Blau oder Champagner). Kein schweres Gold/Senf als dominante Farbe, kein Beauty-/Luxus-Parfüm-Look. Obsthof/Hofladen → Naturgrün/Creme/Holz. Hundeschule → Naturgrün/Sand. Werkstatt → Anthrazit/Stahl/Blau.
 - Bewegung: Hover-Zoom auf Galerie-/Service-Bildern, dezente IntersectionObserver-basierte Scroll-Reveal-Fades auf Sections. Subtil, nicht ablenkend.
 - Sektionen-Reihenfolge (modular nach Branche anpassen): Hero → Brand-Statement (1-2 große ruhige Zeilen) → Services-Grid (3-4 Spalten) → Über uns / Story (Foto + Text split) → Öffnungszeiten + Kontakt → minimaler Footer.
 - CTAs immer konkret: "Termin buchen", "Speisekarte ansehen", "Anrufen", "Reservieren". Nie "Erfahren Sie mehr" oder "Klick mich".
@@ -86,9 +103,9 @@ Hundetraining/Tiere: 1548199973-03cce0bbc87b, 1587300003388-59208cc962cb, 155205
 Büro/Kanzlei/Beratung/Generic: 1607082348824-0a96f2a4b9da, 1556228453-efd6c1ff04f6, 1576091160550-2173dba999ef, 1505740420928-5e560c06d30e
 Autohaus/Fahrzeuge: 1503376780353-7e6692767b70, 1492144534655-ae79c964c9d7, 1549924231-f129b911e442
 
-Wähle 1-3 URLs passend zur Branche und Stimmung. Branche nicht direkt aufgeführt (Tierarzt, Fahrschule, IT) → Generic/Büro oder thematisch nächste Kategorie.
+Wähle 1-3 URLs passend zur Branche und Stimmung. Für Autohaus/Fahrzeughandel: Bild soll Auto-Verkauf, Showroom, Fahrzeugauswahl oder gepflegte Fahrzeuge zeigen, NICHT Werkstatt, Mechaniker, Hebebühne oder öligen Reparaturkontext. Platziere Hero-Text so, dass Karosserie, Front, Heck, Innenraum oder Fahrzeugdetails sichtbar bleiben und nicht von der Headline verdeckt werden. Branche nicht direkt aufgeführt (Tierarzt, Fahrschule, IT) → Generic/Büro oder thematisch nächste Kategorie.
 
-3. **Foto-Placeholder** für Stellen wo ein konkretes Kundenfoto hingehört (Team-Portrait, eigener Innenraum, eigenes Produkt) — KEIN \`<img>\` mit erfundener URL. Stattdessen ein bewusst gestyltes Element wie ein \`<div class="photo-placeholder">\` mit aspect-ratio 4/3, warmem Beige-Hintergrund (#F2EEE6), dezenter Dashed-Border, kleinem uppercase-Label "Dein Foto" und Sub-Hinweis "Schick es Romy im Chat". Soll wie ein designtes Element wirken, nicht wie ein Fehler.
+3. **Foto-Placeholder** für Stellen wo ein konkretes Kundenfoto hingehört (Team-Portrait, eigener Innenraum, eigenes Produkt) — KEIN \`<img>\` mit erfundener URL. Stattdessen ein bewusst gestyltes Element wie ein \`<div class="photo-placeholder">\` mit aspect-ratio 4/3, warmem Beige-Hintergrund (#F2EEE6), dezenter Dashed-Border, kleinem uppercase-Label "Dein Foto" und Sub-Hinweis "Schick es Luna im Chat". Soll wie ein designtes Element wirken, nicht wie ein Fehler.
 
 ## Antwort an den Kunden
 Nach den Datei-Änderungen: 1-3 Sätze auf Deutsch, natürlicher Chat-Ton. Bei ERSTEM Build ohne mitgeschickte Fotos: häng EINEN Satz an in dem du nach eigenen Fotos fragst und Generierung anbietest. Bei FOLGE-Build (Anpassung): nicht nochmal nach Fotos fragen, nur die Änderung zusammenfassen.
@@ -138,6 +155,9 @@ export function sanitizeReply(raw: string): string {
 function safeReply(raw: string | undefined, fallback: string): string {
   const cleaned = sanitizeReply((raw ?? '').trim())
   if (cleaned.length < 3) return fallback
+  if (/technischer fehler|schiefgelaufen|problem an mein team|beheben das/i.test(cleaned)) {
+    return fallback
+  }
   return cleaned
 }
 
@@ -210,7 +230,7 @@ async function fetchWebsiteSnapshot(url: string): Promise<{
       signal: controller.signal,
       headers: {
         'user-agent':
-          'Mozilla/5.0 (compatible; RomyBot/1.0; +https://halloromy.com)',
+          'Mozilla/5.0 (compatible; RomyBot/1.0; +https://halloluna.net)',
         accept: 'text/html,application/xhtml+xml',
       },
       redirect: 'follow',
@@ -370,7 +390,7 @@ function runFastLinkBuildHtml(snapshot: Awaited<ReturnType<typeof fetchWebsiteSn
     .join('')}</div></div></section>
   <section><div class="wrap split"><div><h2>Über ${escapeHtml(businessName)}</h2><p>${escapeHtml(
     snapshot.text.slice(0, 420) || description
-  )}</p></div><div class="panel"><p>Romy hat die bestehende Website analysiert und daraus einen ersten, schnellen Entwurf gebaut. Details wie Bilder, konkrete Texte und Angebotsblöcke können direkt im Chat verfeinert werden.</p></div></div></section>
+  )}</p></div><div class="panel"><p>Luna hat die bestehende Website analysiert und daraus einen ersten, schnellen Entwurf gebaut. Details wie Bilder, konkrete Texte und Angebotsblöcke können direkt im Chat verfeinert werden.</p></div></div></section>
   <section id="kontakt"><div class="wrap"><h2>Kontakt</h2><p>Die wichtigsten Kontaktpunkte sind sichtbar, damit Besucher schnell den nächsten Schritt machen können.</p><div class="contact">${contactRows.join('')}</div></div></section>
   <footer><div class="wrap">${escapeHtml(businessName)}</div></footer>
 </body>
@@ -786,11 +806,14 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
     if (history.length > 0) {
       promptParts.push('Bisheriger Gesprächsverlauf (älteste zuerst):')
       for (const h of history.slice(-30)) {
-        promptParts.push(`${h.role === 'user' ? 'Kunde' : 'Romy'}: ${h.content}`)
+        promptParts.push(`${h.role === 'user' ? 'Kunde' : 'Luna'}: ${h.content}`)
       }
       promptParts.push('---')
     }
     promptParts.push(`Neue Nachricht vom Kunden: ${userMessage}`)
+    promptParts.push(
+      'Wichtig: Die neue Nachricht gewinnt. Wenn sie eine neue Branche oder einen neuen Seitentyp nennt, ersetze den bisherigen Entwurf vollständig und ignoriere widersprüchliche alte Branchen aus dem Verlauf.'
+    )
     const hasLinkInContext =
       /https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(userMessage) ||
       history.slice(-8).some((h) => /https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(h.content))
@@ -977,6 +1000,33 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
       } catch {}
     }
 
+    currentStep = 'recover_index_html'
+    const recoverIndex = await sandbox.commands.run(
+      [
+        `set -eu`,
+        `mkdir -p ${JSON.stringify(WORKSPACE)}`,
+        `if [ ! -s ${JSON.stringify(WORKSPACE + '/index.html')} ]; then`,
+        `  for candidate in /home/user/index.html /app/index.html /index.html /tmp/index.html; do`,
+        `    if [ -s "$candidate" ]; then`,
+        `      cp "$candidate" ${JSON.stringify(WORKSPACE + '/index.html')}`,
+        `      echo "recovered:$candidate"`,
+        `      exit 0`,
+        `    fi`,
+        `  done`,
+        `fi`,
+        `test -s ${JSON.stringify(WORKSPACE + '/index.html')} && echo "present" || echo "missing"`,
+      ].join('\n')
+    ).catch((err) => ({
+      exitCode: -1,
+      stdout: '',
+      stderr: (err as Error).message,
+    }))
+    mark('recover_index_html', {
+      exitCode: recoverIndex.exitCode,
+      stdout: recoverIndex.stdout.trim().slice(-300),
+      stderr: recoverIndex.stderr.slice(-300),
+    })
+
     const changedFiles = parsed.changed || []
     const discoveredFilesRes = await sandbox.commands.run(
       `cd ${JSON.stringify(WORKSPACE)} && find . -maxdepth 4 -type f | sed 's#^./##'`
@@ -989,7 +1039,10 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
             .filter(Boolean)
         : []
     const uploadCandidates = Array.from(
-      new Set(changedFiles.length > 0 ? changedFiles : discoveredFiles)
+      new Set([
+        ...(discoveredFiles.includes('index.html') ? ['index.html'] : []),
+        ...(changedFiles.length > 0 ? changedFiles : discoveredFiles),
+      ])
     )
     const uploaded: string[] = []
     for (const rel of uploadCandidates) {
@@ -1007,11 +1060,14 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     const reply = safeReply(
       parsed.assistant,
       run.exitCode === 0
-        ? 'Okay, fertig — schau gerne mal auf deiner Seite nach.'
-        : 'Entschuldige, beim Erstellen deiner Website ist ein technischer Fehler passiert. Ich habe das Problem an mein Team weitergeleitet. Wir beheben das in Kürze.'
+        ? 'Dein erster Entwurf ist fertig. Schau ihn dir in Ruhe an und schreib mir danach einfach, was ich ändern soll.'
+        : 'Tut mir leid, ich konnte den Entwurf gerade nicht sauber fertigstellen. Ich leite das ans Team weiter.'
     )
 
-    const ok = run.exitCode === 0 && !parsed.result?.is_error && uploaded.length > 0
+    const hasIndexHtml = uploaded.includes('index.html')
+    // Claude Code can exceed the runner timeout after it already wrote a usable
+    // index.html. For the customer, a saved preview is a successful draft.
+    const ok = !parsed.result?.is_error && hasIndexHtml
     if (ok) {
       preserveSandbox = true
       await saveWarmMeta(slug, sandbox.sandboxId)
@@ -1033,7 +1089,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     }
     if (!ok) {
       result.error_step = 'coder_returned_not_ok'
-      result.error = `exitCode=${run.exitCode} is_error=${parsed.result?.is_error ?? '?'} uploaded=${uploaded.length} discovered=${discoveredFiles.length} changed=${changedFiles.length}`
+      result.error = `exitCode=${run.exitCode} is_error=${parsed.result?.is_error ?? '?'} uploaded=${uploaded.length} has_index=${hasIndexHtml} discovered=${discoveredFiles.length} changed=${changedFiles.length}`
     }
 
     result.transcript_path = await saveBuildTranscript({

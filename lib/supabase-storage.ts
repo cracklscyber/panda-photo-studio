@@ -10,11 +10,11 @@ function sb(): SupabaseClient {
 }
 
 export function sitePublicUrl(slug: string, path = 'index.html'): string {
-  // Per-customer subdomain: https://{slug}.halloromy.com/. The middleware
+  // Per-customer subdomain: https://{slug}.halloluna.net/. The middleware
   // rewrites subdomain requests internally to /custom-site/{slug}, which
   // serves the HTML with the correct Content-Type (Supabase public URLs
   // force text/plain + a CSP sandbox, so we can't link there directly).
-  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloluna.net')
     .trim()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')
@@ -23,7 +23,7 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
 }
 
 export function sitePreviewUrl(slug: string, path = 'index.html'): string {
-  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloluna.net')
     .trim()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')

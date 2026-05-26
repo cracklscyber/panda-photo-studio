@@ -94,7 +94,7 @@ async function extractBusinessNameFromUrl(url: string): Promise<string | null> {
       signal: controller.signal,
       headers: {
         'user-agent':
-          'Mozilla/5.0 (compatible; RomyBot/1.0; +https://halloromy.com)',
+          'Mozilla/5.0 (compatible; RomyBot/1.0; +https://halloluna.net)',
         accept: 'text/html,application/xhtml+xml',
       },
       redirect: 'follow',

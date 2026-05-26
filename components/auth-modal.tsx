@@ -23,7 +23,7 @@ declare global {
   }
 }
 
-const PROD_ORIGIN = 'https://halloromy.com'
+const PROD_ORIGIN = 'https://halloluna.net'
 
 export function AuthModal({
   sessionId,
@@ -116,25 +116,11 @@ export function AuthModal({
       window.localStorage.setItem('romy-web-session', linkData.canonicalSessionId)
     }
 
-    const trackingSessionId = linkData.canonicalSessionId || storedSessionId
-    const trackingKey = `romy-registration-tracked:${trackingSessionId}`
-    if (
-      linkData.hadFirstBuild &&
-      linkData.isNewAccountLink &&
-      !window.localStorage.getItem(trackingKey) &&
-      window.fbq
-    ) {
-      window.localStorage.setItem(trackingKey, '1')
-      window.fbq?.('track', 'Lead', {
-        content_name: 'account_after_website_build',
-        content_category: 'Romy Qualified Lead',
-        method: 'email',
-      })
-      window.fbq?.('track', 'CompleteRegistration', {
-        content_name: 'account_after_website_build',
-        method: 'email',
-      })
-    }
+    // Lead-Tracking ist seit dem Auth-Gate (32c2903) ans erste fertige Build
+    // gekoppelt, nicht mehr an die Registrierung. CompleteRegistration feuert
+    // im Aufrufer (`handleAuthSuccess` → `trackRegistration` in website-chat).
+    // Diese Stelle hatte den Legacy-"hadFirstBuild"-Pfad, der seit dem Gate
+    // ohnehin nie greift — entfernt, um Doppel-Tracking zu vermeiden.
 
     onSuccess()
   }
@@ -319,7 +305,7 @@ export function AuthModal({
             : isForgot
             ? 'Trag deine E-Mail ein, wir schicken dir einen Link zum neuen Passwort.'
             : intent === 'first-time'
-            ? 'Trag deine E-Mail ein, dann legt Romy direkt los. Wir schicken dir deinen Entwurf auch per Mail – damit du ihn immer wiederfindest.'
+            ? 'Trag deine E-Mail ein, dann legt Luna direkt los. Wir schicken dir deinen Entwurf auch per Mail, damit du ihn immer wiederfindest.'
             : 'Damit deine Seite und alle Änderungen erhalten bleiben, und ich dich beim nächsten Mal wiedererkenne.'}
         </p>
 

@@ -11,7 +11,7 @@ import {
   markCallbackRequested,
   FREE_BUILD_LIMIT,
 } from '@/lib/romy-sites'
-import { loadHistory, appendTurn } from '@/lib/romy-chat'
+import { loadHistory, appendAssistantOnly, appendUserOnly } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 import { downloadSiteFile, sitePreviewUrl } from '@/lib/supabase-storage'
 
@@ -21,20 +21,15 @@ export const maxDuration = 300
 const ACK_FIRST =
   'Alles klar, ich leg jetzt los. Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
-  'Alles klar, ich schau\'s mir an — einen Moment, ca. 30 Sekunden.'
+  'Alles klar, ich schau es mir an. Einen Moment.'
 
-const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
-const STRIPE_PAYMENT_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
-
-function buildLimitMessage(phone: string): string {
-  const stripeWithRef = `${STRIPE_PAYMENT_URL}?client_reference_id=${encodeURIComponent(phone)}`
+function buildLimitMessage(_phone: string): string {
   return [
     'Du hast deine kostenlosen Änderungen aufgebraucht. Deine Seite bleibt natürlich erhalten.',
     '',
-    'Wenn ich weiter für dich bauen und Änderungen live setzen soll, aktiviere Romy für 29€/Monat. Das ist jederzeit kündbar.',
+    'Wenn ich weiter für dich bauen und Änderungen umsetzen soll, aktiviere Hallo Luna für 29€/Monat. Das ist jederzeit kündbar.',
     '',
-    `Direkt aktivieren: ${stripeWithRef}`,
-    `Oder kurz kostenlos sprechen: ${CAL_BOOKING_URL}`,
+    'Ich leite das an mein Team weiter, dann bekommst du den nächsten Schritt sauber zugeschickt.',
   ].join('\n')
 }
 
@@ -187,6 +182,12 @@ async function processMessage(message: IncomingMessage) {
   }
 
   const history = await loadHistory(phone)
+  const storedUserMessage = imageUrl
+    ? `[Bild erhalten]${text ? `\n${text}` : ''}`
+    : text || '(leer)'
+  await appendUserOnly(phone, storedUserMessage).catch((err) =>
+    console.error('appendUserOnly failed:', err)
+  )
 
   // Step 1: classify intent (cheap Haiku call)
   const routed = await routeMessage(history, text || '(leer)', !!imageUrl)
@@ -196,7 +197,7 @@ async function processMessage(message: IncomingMessage) {
     const raw = routed.chat_reply || 'Sag mir einfach, was ich für deine Seite machen soll.'
     const reply = sanitizeReply(raw) || 'Sag mir einfach, was ich für deine Seite machen soll.'
     await sendWhatsAppMessage(metaFrom, reply)
-    await appendTurn(phone, text || '[Bild]', reply).catch(() => {})
+    await appendAssistantOnly(phone, reply).catch(() => {})
     return
   }
 
@@ -214,7 +215,7 @@ async function processMessage(message: IncomingMessage) {
         console.error('markCallbackRequested failed:', err)
       )
     }
-    await appendTurn(phone, text || '[Bild]', limitMessage).catch(() => {})
+    await appendAssistantOnly(phone, limitMessage).catch(() => {})
     return
   }
 
@@ -223,6 +224,9 @@ async function processMessage(message: IncomingMessage) {
   await sendWhatsAppMessage(metaFrom, ack).catch((err) => {
     console.error('ack send failed:', err)
   })
+  await appendAssistantOnly(phone, ack).catch((err) =>
+    console.error('append ack failed:', err)
+  )
 
   const coderResult = await runRomyCoder({
     slug: site.slug,
@@ -240,6 +244,9 @@ async function processMessage(message: IncomingMessage) {
     duration_ms: coderResult.duration_ms,
     was_warm: coderResult.was_warm,
     user_message: text,
+    error_step: coderResult.ok ? null : (coderResult.error_step ?? 'coder_returned_not_ok'),
+    error_msg: coderResult.ok ? null : (coderResult.error ?? null),
+    transcript_path: coderResult.transcript_path,
   }).catch((err) => console.error('logBuild failed:', err))
 
   if (coderResult.ok) {
@@ -251,7 +258,7 @@ async function processMessage(message: IncomingMessage) {
       const failureReply =
         'Tut mir wirklich sehr leid, da ist gerade was schiefgelaufen. Ich hab das meinem Team gemeldet. Du musst nichts weiter machen.'
       await sendWhatsAppMessage(metaFrom, failureReply)
-      await appendTurn(phone, text || '[Bild]', failureReply).catch(() => {})
+      await appendAssistantOnly(phone, failureReply).catch(() => {})
       return
     }
     if (coderResult.sandbox_id) {
@@ -274,12 +281,11 @@ async function processMessage(message: IncomingMessage) {
     if (!sent) {
       await sendWhatsAppMessage(
         metaFrom,
-        `${body}\n\nDein Entwurf ist fertig. Der Vorschau-Button konnte gerade nicht geladen werden, ich leite das an mein Team weiter.`
+        `${body}\n\nDein Entwurf ist fertig. Ich konnte den Vorschau-Button gerade nicht sauber senden und leite das ans Team weiter.`
       )
     }
-    await appendTurn(
+    await appendAssistantOnly(
       phone,
-      text || '[Bild]',
       `${body}\n[ROMY_SITE:${previewUrl}]`
     ).catch(() => {})
     return
@@ -289,7 +295,7 @@ async function processMessage(message: IncomingMessage) {
     coderResult.reply ||
     'Tut mir wirklich sehr leid, da ist gerade was schiefgelaufen. Ich hab das meinem Team gemeldet — sie kümmern sich darum und beheben es manuell. Du musst nichts weiter machen, ich melde mich, sobald es wieder läuft.'
   await sendWhatsAppMessage(metaFrom, failureReply)
-  await appendTurn(phone, text || '[Bild]', failureReply).catch(() => {})
+  await appendAssistantOnly(phone, failureReply).catch(() => {})
 }
 
 // ── Send a text message via Meta Cloud API ──

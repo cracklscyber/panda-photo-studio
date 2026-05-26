@@ -4,11 +4,12 @@ export const config = {
   matcher: ['/((?!api/|_next/static|_next/image|favicon.ico).*)'],
 }
 
-const APEX = (process.env.ROMY_APEX_DOMAIN || 'halloromy.com')
+const APEX = (process.env.ROMY_APEX_DOMAIN || 'halloluna.net')
   .trim()
   .replace(/^https?:\/\//, '')
   .replace(/\/.*$/, '')
   .toLowerCase()
+const LEGACY_APEX = 'halloromy.com'
 const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'app', 'mail', 'ftp'])
 
 function extractSlug(host: string | null): string | null {
@@ -25,6 +26,17 @@ function extractSlug(host: string | null): string | null {
 export function middleware(req: NextRequest) {
   const host = req.headers.get('host')
   const hostname = host?.split(':')[0].toLowerCase() || ''
+
+  if (hostname === LEGACY_APEX || hostname === `www.${LEGACY_APEX}` || hostname.endsWith(`.${LEGACY_APEX}`)) {
+    const targetHost =
+      hostname === LEGACY_APEX || hostname === `www.${LEGACY_APEX}`
+        ? APEX
+        : `${hostname.slice(0, -LEGACY_APEX.length - 1)}.${APEX}`
+    const target = new URL(`https://${targetHost}${req.nextUrl.pathname}`)
+    target.search = req.nextUrl.search
+    return NextResponse.redirect(target, 301)
+  }
+
   const slug = extractSlug(host)
 
   if (slug) {

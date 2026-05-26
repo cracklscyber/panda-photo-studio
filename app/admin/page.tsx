@@ -102,7 +102,7 @@ export default async function AdminPage({
             className="w-full rounded-3xl border border-[#1a1714]/8 bg-white/70 p-10 shadow-[0_24px_60px_-24px_rgba(26,23,20,0.25)] backdrop-blur-xl"
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#1a1714]/55">
-              Romy
+              Hallo Luna
             </p>
             <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-medium leading-none tracking-tight">
               Admin
@@ -250,7 +250,7 @@ export default async function AdminPage({
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-10">
           <div className="flex items-baseline gap-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#1a1714]/55">
-              Romy
+              Hallo Luna
             </p>
             <span className="h-px w-8 bg-[#1a1714]/20" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#1a1714]/55">
@@ -283,7 +283,7 @@ export default async function AdminPage({
 
         <div className="mx-auto max-w-6xl px-6 pt-10">
           <h1 className="font-[family-name:var(--font-display)] text-[44px] font-medium leading-[1.05] tracking-[-0.015em] sm:text-[56px]">
-            Heute auf Romy.
+            Heute auf Hallo Luna.
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[#1a1714]/65">
             {rows.length} Gespräch{rows.length === 1 ? '' : 'e'} in den letzten
@@ -405,7 +405,7 @@ export default async function AdminPage({
                             </div>
                             {r.site?.slug && (
                               <div className="truncate font-mono text-[11px] text-[#1a1714]/45">
-                                {r.site.slug}.halloromy.com
+                                {r.site.slug}.halloluna.net
                               </div>
                             )}
                           </>
@@ -421,7 +421,7 @@ export default async function AdminPage({
                           <span
                             className={`shrink-0 text-[11px] font-semibold uppercase tracking-wider ${r.last?.role === 'user' ? 'text-[#1a1714]/80' : 'text-[#21a356]'}`}
                           >
-                            {r.last?.role === 'user' ? 'User' : 'Romy'}
+                            {r.last?.role === 'user' ? 'User' : 'Luna'}
                           </span>
                           <span className="truncate text-[13px] text-[#1a1714]/70">
                             {cleanPreview(r.last?.content) || '—'}

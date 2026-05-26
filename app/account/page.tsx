@@ -122,7 +122,7 @@ export default function AccountPage() {
         {!loading && !me?.authenticated && (
           <div className="mt-8 rounded-2xl border border-black/[0.08] bg-white p-6">
             <p className="text-sm text-[#1a1714]/70">
-              Du bist gerade nicht angemeldet. Starte einen Chat mit Romy, dort kannst
+              Du bist gerade nicht angemeldet. Starte einen Chat mit Luna, dort kannst
               du dich anmelden.
             </p>
             <Link
@@ -162,7 +162,7 @@ export default function AccountPage() {
             >
               <h2 className="text-base font-semibold">Mitgliedschaft</h2>
               <p className="mt-2 text-sm text-[#1a1714]/65">
-                Romy.ai Beta — 29 €/Monat, monatlich kündbar, keine Mindestlaufzeit.
+                Hallo Luna Beta — 29 €/Monat, monatlich kündbar, keine Mindestlaufzeit.
                 Hast du schon ein Abo, kannst du es im Abo-Center kündigen, deine
                 Karte ändern oder Rechnungen einsehen.
               </p>

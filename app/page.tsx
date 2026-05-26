@@ -1,261 +1,554 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { BookingModal } from '@/components/booking-modal'
-import { WebsiteChat } from '@/components/website-chat'
 import { AccountMenu } from '@/components/account-menu'
-import { AuthReturnGuard } from '@/components/auth-return-guard'
-import { TemplateGallery } from '@/components/template-gallery'
+import { WhatsAppLink } from '@/components/whatsapp-link'
 
 const CAL_BOOKING_URL = 'https://cal.com/romy.ai'
+const WHATSAPP_URL = 'https://wa.me/4915229227823'
+
+const industries = [
+  {
+    label: 'Autohaus & KFZ',
+    description:
+      'Fahrzeugbestand, Sonderangebote, Öffnungszeiten — alles per Chat aktuell halten. Keine Agentur, keine Wartezeit.',
+    tag: 'Spezialisiert',
+  },
+  {
+    label: 'Café & Restaurant',
+    description:
+      'Warme Bildwelt, Speisekarte und Öffnungszeiten — einladend und ohne Baukasten.',
+    tag: null,
+  },
+  {
+    label: 'Friseur & Beauty',
+    description:
+      'Editorialer Look, Leistungsübersicht und Terminanfrage — hochwertig und schnell.',
+    tag: null,
+  },
+  {
+    label: 'Handwerk & Service',
+    description:
+      'Vertrauen, Kontaktformular und lokale Sichtbarkeit — fertig in wenigen Minuten.',
+    tag: null,
+  },
+  {
+    label: 'Boutique & Mode',
+    description:
+      'Hochwertige Bildwelt, Kollektion und Öffnungszeiten — individuell, kein Template.',
+    tag: null,
+  },
+  {
+    label: 'Praxis & Therapie',
+    description:
+      'Seröser Auftritt, Leistungen und Terminanfrage — ruhig, klar und mobil.',
+    tag: null,
+  },
+]
+
+const comparison = [
+  {
+    label: 'Baukasten',
+    sub: 'Wix, Jimdo, Squarespace',
+    rows: [
+      { key: 'Kosten', value: '€30 – 100 / Monat' },
+      { key: 'Setup', value: 'Stundenlang, alles selbst' },
+      { key: 'Änderungen', value: 'Du machst alles selbst' },
+      { key: 'Ergebnis', value: 'Sieht nach Vorlage aus' },
+    ],
+    highlight: false,
+  },
+  {
+    label: 'Luna',
+    sub: 'Deine KI-Assistentin',
+    rows: [
+      { key: 'Kosten', value: 'Kostenlos starten' },
+      { key: 'Setup', value: 'Erster Entwurf in Minuten' },
+      { key: 'Änderungen', value: 'Per Chat, sofort live' },
+      { key: 'Ergebnis', value: 'Individuell, kein Template' },
+    ],
+    highlight: true,
+  },
+  {
+    label: 'Webdesigner',
+    sub: 'Agentur oder Freelancer',
+    rows: [
+      { key: 'Kosten', value: '€2.000 – 5.000+' },
+      { key: 'Setup', value: 'Wochen Wartezeit' },
+      { key: 'Änderungen', value: 'Jede Kleinigkeit kostet extra' },
+      { key: 'Ergebnis', value: 'Gut, aber teuer und langsam' },
+    ],
+    highlight: false,
+  },
+]
+
+const features = [
+  {
+    title: 'Komplette Website',
+    body: 'Aus einer kurzen Beschreibung baut Luna eine fertige Seite — kein Template, kein Baukastengefühl.',
+  },
+  {
+    title: 'Echte Texte',
+    body: 'Keine Platzhalter. Luna schreibt Texte, die dein Geschäft wirklich beschreiben.',
+  },
+  {
+    title: 'Passende Bilder',
+    body: 'Hochwertige Bilder werden automatisch gewählt oder deine eigenen eingebaut.',
+  },
+  {
+    title: 'Per Chat ändern',
+    body: 'Schreib Luna einfach, was sich geändert hat. Sie setzt es sofort um — kein Editor nötig.',
+  },
+  {
+    title: 'Mobil-optimiert',
+    body: 'Jede Seite sieht auf dem Handy genauso gut aus wie am Desktop.',
+  },
+  {
+    title: 'Dein Design',
+    body: 'Farben, Schrift, Layout — du entscheidest per Chat. So individuell wie du willst.',
+  },
+]
+
+const examples = [
+  {
+    title: 'Autohaus & KFZ',
+    image: '/template-images/autohaus-kfz.jpg',
+    text: 'Fahrzeugbestand, Angebote und Kontakt — seriös, modern und ohne Agentur.',
+  },
+  {
+    title: 'Beauty & Studio',
+    image: '/template-images/friseur-beauty.jpg',
+    text: 'Editorialer Look, hochwertige Bilder und einfache Termin-Anfrage.',
+  },
+  {
+    title: 'Handwerk & Service',
+    image: '/template-images/handwerk-werkstatt.jpg',
+    text: 'Vertrauen, lokale Sichtbarkeit und klare Anfrage statt alter Visitenkarte.',
+  },
+]
+
+const outcomes = [
+  ['1', 'Erzähl Luna kurz von deinem Geschäft.'],
+  ['2', 'Dein erster Entwurf ist sofort sichtbar.'],
+  ['3', 'Texte, Bilder und Design feinerst du danach per Chat.'],
+]
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white text-[#1a1714]">
-      <AuthReturnGuard />
-      {/* Nav */}
-      <header className="relative z-50 border-b border-black/5 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+    <main className="min-h-screen overflow-hidden bg-[#edf2eb] text-[#11110f]">
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute left-1/2 top-[-18%] h-[760px] w-[1200px] -translate-x-1/2 rounded-full bg-[#e8ff8e]/28 blur-[150px]" />
+        <div className="absolute right-[-12%] top-[12%] h-[600px] w-[600px] rounded-full bg-[#caffed]/35 blur-[140px]" />
+        <div className="absolute left-[12%] top-[46%] h-[640px] w-[760px] rounded-full bg-white/70 blur-[130px]" />
+      </div>
+
+      <header className="relative z-40 bg-white/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="relative inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-black/8 bg-white/65 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.85)] backdrop-blur-xl">
+            <span className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-white/80 bg-white/70 shadow-[0_18px_44px_-30px_rgba(25,31,20,0.5)] backdrop-blur-2xl">
               <Image
                 src="/romy-avatar.png"
-                alt="Romy"
+                alt="Luna"
                 width={640}
                 height={640}
                 className="h-full w-full object-cover"
                 priority
               />
             </span>
-            <div className="text-lg font-semibold tracking-tight text-[#1a1714]">Romy<span className="text-[#1a1714]/45">.ai</span></div>
+            <div className="text-lg font-black tracking-tight">Luna</div>
           </div>
-          <nav className="hidden items-center gap-8 text-sm font-medium text-[#1a1714]/70 md:flex">
-            <a href="#how" className="transition hover:text-[#1a1714]">Wie funktioniert's</a>
-            <a href="#chat" className="transition hover:text-[#1a1714]">Chat</a>
+
+          <nav className="hidden items-center gap-8 text-sm font-bold text-[#11110f]/54 md:flex">
+            <a href="#branchen" className="transition hover:text-[#11110f]">Branchen</a>
+            <a href="#vergleich" className="transition hover:text-[#11110f]">Vergleich</a>
+            <a href="#examples" className="transition hover:text-[#11110f]">Beispiele</a>
+            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="transition hover:text-[#11110f]">Starten</a>
             <AccountMenu variant="light" />
           </nav>
-          <div className="flex items-center gap-2">
-            <div className="md:hidden">
-              <AccountMenu variant="light" />
-            </div>
+
+          <a
+            href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer"
+            className="hidden rounded-full bg-[#11110f] px-5 py-2.5 text-sm font-black text-white shadow-[0_20px_48px_-30px_rgba(22,26,18,0.7)] transition hover:bg-[#2e302a] sm:inline-flex"
+          >
+            Kostenlos testen
+          </a>
+          <div className="md:hidden">
+            <AccountMenu variant="light" />
           </div>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="bg-white">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 px-6 pb-16 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-16 lg:pb-24">
-          <div className="text-center lg:text-left">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#1a1714]/55 sm:text-[13px]">
-              Deine persönliche Website-Assistentin
+      {/* ── HERO ── */}
+      <section className="px-5 pb-16 pt-6 sm:px-6 lg:pb-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-5xl text-center">
+            <p className="mx-auto inline-flex items-center rounded-full border border-black/[0.06] bg-white/55 px-4 py-2 text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#6f8000] shadow-sm backdrop-blur">
+              Deine Website-Assistentin
             </p>
 
-            <h1 className="mt-6 text-balance text-5xl font-bold leading-[0.98] tracking-[-0.035em] text-[#1a1714] sm:text-6xl md:text-[5rem]">
-              Deine Website.
-              <br />
-              <span className="bg-gradient-to-br from-[#1a3a22] via-[#1ad063] to-[#21e66b] bg-clip-text text-transparent">
-                Per Chat.
-              </span>
+            <h1 className="mx-auto mt-7 max-w-5xl text-balance text-[3.2rem] font-black leading-[0.88] tracking-[-0.065em] sm:text-7xl lg:text-[6.2rem]">
+              Kein Designer.{' '}
+              <br className="hidden sm:block" />
+              Kein Baukasten.{' '}
+              <br className="hidden sm:block" />
+              <span className="text-[#6f8000]">Deine Website per Chat.</span>
             </h1>
 
-            <p className="mx-auto mt-7 max-w-xl text-balance text-base leading-relaxed text-[#1a1714]/65 sm:text-lg lg:mx-0">
-              Romy übernimmt Konzept, Aufbau und Updates deiner Website. Schreib ihr eine Nachricht, den Rest macht sie.
+            <p className="mx-auto mt-7 max-w-2xl text-balance text-lg leading-9 text-[#11110f]/55 sm:text-xl">
+              Luna baut aus wenigen Nachrichten eine fertige Website — mit echten Texten, passenden Bildern
+              und einem Design, das zu deinem Geschäft passt. Du änderst alles jederzeit per Chat.
+              Luna programmiert für dich.
             </p>
 
-            <div className="mt-9 flex flex-col items-center gap-4 sm:flex-row sm:gap-5 lg:items-start lg:justify-start">
+            <div className="mx-auto mt-9 flex max-w-xl flex-col gap-3 rounded-full border border-black/[0.08] bg-white/70 p-2 shadow-[0_28px_80px_-62px_rgba(25,31,20,0.5)] backdrop-blur-2xl sm:flex-row">
               <a
-                href="#chat"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#1a1714] px-8 py-4 text-base font-semibold text-white shadow-[0_8px_24px_-8px_rgba(26,23,20,0.35)] transition hover:bg-[#2a2522]"
+                href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer"
+                className="inline-flex flex-1 items-center justify-center rounded-full bg-[#11110f] px-6 py-4 text-base font-black text-white transition hover:bg-[#2e302a]"
               >
-                Jetzt kostenlos testen
-                <span aria-hidden>→</span>
+                Kostenlosen Entwurf erstellen
               </a>
               <BookingModal
                 url={CAL_BOOKING_URL}
-                className="inline-flex items-center gap-2 rounded-xl border border-[#1a1714]/15 bg-white px-7 py-4 text-base font-semibold text-[#1a1714] shadow-sm transition hover:border-[#1a1714]/30 hover:bg-[#1a1714]/[0.04]"
+                className="inline-flex items-center justify-center rounded-full px-6 py-4 text-base font-black text-[#11110f]/74 transition hover:bg-[#11110f]/[0.04] hover:text-[#11110f]"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
                 Beratung buchen
               </BookingModal>
             </div>
 
-            <ul className="mt-10 grid gap-5 text-left sm:grid-cols-2 lg:max-w-xl">
-              {[
-                { label: 'Updates per Chat', text: 'Änderungen sofort live, kein Tech-Setup' },
-                { label: 'Texte & Design', text: 'schreibt deine Inhalte, wählt ein passendes Layout' },
-                { label: 'Bilder', text: 'hochladen, generieren oder bestehende auffrischen lassen' },
-                { label: 'Live in Minuten', text: 'eigene Domain möglich, Hosting in Deutschland (DSGVO)' },
-              ].map((item) => (
-                <li key={item.label} className="flex gap-3">
-                  <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#21e66b]" />
-                  <div>
-                    <p className="text-sm font-semibold text-[#1a1714]">{item.label}</p>
-                    <p className="mt-0.5 text-sm leading-snug text-[#1a1714]/60">{item.text}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
+            <p className="mt-4 text-sm font-medium text-[#11110f]/42">
+              Erst Entwurf ansehen. Danach entscheiden.
+            </p>
           </div>
 
-          <div
-            className="relative overflow-hidden rounded-[2rem] border border-white/10 p-7 shadow-[0_40px_80px_-30px_rgba(15,30,45,0.5),inset_0_1px_0_0_rgba(255,255,255,0.08)] sm:p-8"
-            style={{
-              background:
-                'radial-gradient(ellipse 100% 60% at 12% 0%, rgba(45,108,108,0.85), transparent 60%), radial-gradient(ellipse 90% 70% at 90% 100%, rgba(80,40,130,0.9), transparent 65%), linear-gradient(155deg, #0e2828 0%, #161a36 50%, #2a1650 100%)',
-            }}
-          >
-            <div className="flex items-center gap-4">
-              <span
-                className="relative inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] backdrop-blur-xl"
-                aria-hidden
-              >
-                <Image
-                  src="/romy-avatar.png"
-                  alt="Romy"
-                  width={640}
-                  height={640}
-                  className="h-full w-full object-cover"
-                />
-              </span>
-              <div>
-                <p className="text-base font-semibold leading-tight text-white">Romy</p>
-                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/60">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inset-0 rounded-full bg-[#21e66b] opacity-60 [animation:ping_2s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                    <span className="relative h-2 w-2 rounded-full bg-[#21e66b]" />
-                  </span>
-                  Online · antwortet in Sekunden
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-7 space-y-2.5">
-              <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-md bg-white/95 px-4 py-2.5 text-sm leading-snug text-[#1a1714] shadow-sm">
-                Hi Romy, ich brauche eine Seite für mein Café Mira in München.
-              </div>
-              <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-md border border-[#21e66b]/30 bg-[#21e66b]/[0.16] px-4 py-2.5 text-sm leading-snug text-white shadow-[0_2px_12px_-4px_rgba(33,230,107,0.25)] backdrop-blur-sm">
-                Klar. Erzähl mir noch kurz: was macht euer Café besonders, und welche Stimmung soll die Seite haben?
-              </div>
-              <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-md bg-white/95 px-4 py-2.5 text-sm leading-snug text-[#1a1714] shadow-sm">
-                Specialty Coffee, hand-geröstet. Modern, viel Holz, warm. Adresse: Sonnenstraße 14.
-              </div>
-              <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-md border border-[#21e66b]/30 bg-[#21e66b]/[0.16] px-4 py-2.5 text-sm leading-snug text-white shadow-[0_2px_12px_-4px_rgba(33,230,107,0.25)] backdrop-blur-sm">
-                Verstanden, hier ist mein erster Vorschlag:
-              </div>
-              <div className="mr-auto w-[85%] overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06] shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)]">
-                <div className="flex items-center gap-1.5 border-b border-white/10 bg-white/[0.04] px-3 py-2">
-                  <span className="h-2 w-2 rounded-full bg-white/25" />
-                  <span className="h-2 w-2 rounded-full bg-white/25" />
-                  <span className="h-2 w-2 rounded-full bg-white/25" />
-                  <span className="ml-2 truncate text-[10px] text-white/45">cafemira.halloromy.com</span>
+          {/* Workspace mockup */}
+          <div className="mx-auto mt-14 max-w-6xl rounded-[2.4rem] border border-white/90 bg-white/56 p-3 shadow-[0_42px_120px_-82px_rgba(25,31,20,0.6),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-2xl sm:p-5">
+            <div className="overflow-hidden rounded-[1.8rem] border border-black/[0.06] bg-[#fbfbf6]">
+              <div className="flex items-center justify-between border-b border-black/[0.06] px-4 py-3 sm:px-5">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#11110f]/18" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#11110f]/18" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#a6bd00]" />
                 </div>
-                <Image
-                  src="/cafe-site.png"
-                  alt="Vorschau der von Romy gebauten Café-Website"
-                  width={800}
-                  height={1200}
-                  className="h-44 w-full object-cover object-top"
-                />
-                <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-[11px] text-white/70">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inset-0 rounded-full bg-[#21e66b] opacity-60 [animation:ping_2s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                      <span className="relative h-1.5 w-1.5 rounded-full bg-[#21e66b]" />
+                <p className="text-xs font-bold text-[#11110f]/34">luna workspace</p>
+              </div>
+
+              <div className="grid gap-0 lg:grid-cols-[360px_minmax(0,1fr)]">
+                <div className="border-b border-black/[0.06] bg-white/60 p-5 lg:border-b-0 lg:border-r">
+                  <div className="flex items-center gap-3">
+                    <span className="relative inline-flex h-12 w-12 overflow-hidden rounded-full border border-black/[0.08] bg-white">
+                      <Image
+                        src="/romy-avatar.png"
+                        alt="Luna"
+                        width={640}
+                        height={640}
+                        className="h-full w-full object-cover"
+                      />
                     </span>
-                    Veröffentlicht
-                  </span>
-                  <span className="rounded-full bg-[#21e66b]/20 px-2 py-0.5 text-[10px] font-medium text-[#21e66b]">Live</span>
+                    <div>
+                      <p className="font-black">Luna</p>
+                      <p className="text-xs font-semibold text-[#11110f]/40">online · antwortet in Sekunden</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-3">
+                    <div className="rounded-2xl rounded-tr-md bg-[#f4f5ef] px-4 py-3 text-sm leading-snug text-[#11110f]">
+                      Ich brauche eine moderne Seite für mein Cafe in München.
+                    </div>
+                    <div className="rounded-2xl rounded-tl-md bg-[#e9ff83] px-4 py-3 text-sm font-semibold leading-snug text-[#11110f]">
+                      Klar. Ich baue einen ersten Entwurf mit Texten, Struktur und passenden Bildern.
+                    </div>
+                    <div className="rounded-2xl rounded-tr-md bg-[#f4f5ef] px-4 py-3 text-sm leading-snug text-[#11110f]">
+                      Bitte hochwertig, hell, warm und nicht nach Vorlage.
+                    </div>
+                    <div className="rounded-2xl rounded-tl-md bg-[#11110f] px-4 py-3 text-sm font-semibold leading-snug text-white">
+                      Verstanden. Hier ist die erste Version.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#f5f1e8] p-4 sm:p-6">
+                  <div className="overflow-hidden rounded-[1.4rem] border border-black/[0.08] bg-white shadow-[0_34px_80px_-62px_rgba(25,31,20,0.45)]">
+                    <div className="flex items-center justify-between border-b border-black/[0.06] bg-[#f7f1e4] px-4 py-3">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-[#11110f]/38">Cafe Mira</p>
+                      <p className="text-xs font-bold text-[#11110f]/34">cafemira.halloluna.net</p>
+                    </div>
+                    <div className="bg-[#f8f3ea] p-4 sm:p-6">
+                      <div className="overflow-hidden rounded-[1.15rem] border border-black/[0.08] bg-white shadow-[0_24px_70px_-54px_rgba(25,31,20,0.45)]">
+                        <div
+                          className="relative min-h-[250px] overflow-hidden bg-cover bg-center p-7 sm:min-h-[330px] sm:p-10"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(90deg, rgba(30,24,18,0.74), rgba(30,24,18,0.18)), url('/template-images/cafe-bistro.jpg')",
+                          }}
+                        >
+                          <div className="relative max-w-[20rem] text-white">
+                            <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-white/70">Cafe Mira · München</p>
+                            <h3 className="mt-5 text-4xl font-black leading-[0.92] tracking-[-0.04em] sm:text-6xl">
+                              Kaffee, Kuchen und ruhige Morgen.
+                            </h3>
+                            <p className="mt-5 text-sm font-medium leading-6 text-white/78">
+                              Ein heller Ort für Frühstück, kurze Pausen und gute Gespräche.
+                            </p>
+                            <div className="mt-6 inline-flex rounded-full bg-[#e9ff83] px-5 py-3 text-xs font-black text-[#11110f]">
+                              Tisch anfragen
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 bg-white p-4 sm:grid-cols-3 sm:p-5">
+                          {['Frühstück', 'Hausgemachte Kuchen', 'Kaffee aus München'].map((item) => (
+                            <div key={item} className="rounded-2xl bg-[#f4f1ea] p-4">
+                              <p className="text-xs font-black text-[#11110f]">{item}</p>
+                              <p className="mt-2 h-2 w-2/3 rounded-full bg-[#11110f]/12" />
+                              <p className="mt-2 h-2 w-1/2 rounded-full bg-[#11110f]/10" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-7 rounded-2xl border border-white/10 bg-white/[0.04] p-2 backdrop-blur-sm">
-              <a
-                href="#chat"
-                className="flex w-full items-center justify-between gap-3 rounded-xl bg-[#21e66b] px-5 py-3.5 text-sm font-semibold text-[#07120c] shadow-[0_10px_28px_-8px_rgba(33,230,107,0.5)] transition hover:bg-[#1ad063]"
-              >
-                <span>Jetzt mit Romy chatten</span>
-                <span aria-hidden>→</span>
-              </a>
             </div>
           </div>
         </div>
       </section>
 
-      <WebsiteChat />
+      {/* ── BRANCHEN ── */}
+      <section id="branchen" className="bg-white px-5 py-24 sm:px-6 lg:py-32">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto mb-16 max-w-3xl text-center">
+            <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#6f8000]">Branchen</p>
+            <h2 className="mt-5 text-4xl font-black leading-[0.95] tracking-[-0.05em] sm:text-[4.4rem]">
+              Für jede Branche. Sofort loslegen.
+            </h2>
+            <p className="mt-6 text-lg leading-9 text-[#11110f]/55">
+              Luna kennt deine Branche und baut passend dazu — kein generisches Template,
+              sondern eine Seite, die wirklich zu deinem Geschäft passt.
+            </p>
+          </div>
 
-      <TemplateGallery />
-
-      <section id="how" className="mx-auto max-w-5xl px-6 py-20 text-[#1a1714]">
-        <h2 className="mb-12 text-center text-3xl font-semibold tracking-tight">So funktioniert's</h2>
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              n: '1',
-              title: 'Du schreibst',
-              text: 'Erzähl Romy kurz, was du anbietest, was wichtig ist und wie dein Auftritt wirken soll. Kein Formular, keine Menüs, kein technisches Setup.',
-            },
-            {
-              n: '2',
-              title: 'Romy baut',
-              text: 'Romy erstellt daraus eine klare Website mit den richtigen Inhalten: Angebot, Bilder, Kontakt, Öffnungszeiten und allem, was dein Geschäft online braucht.',
-            },
-            {
-              n: '3',
-              title: 'Bilder dazu',
-              text: 'Du hast eigene Fotos? Schick sie Romy direkt im Chat. Keine eigenen? Sie generiert dir welche oder frischt deine bestehenden auf, ganz nebenbei.',
-            },
-            {
-              n: '4',
-              title: 'Du bleibst aktuell',
-              text: 'Neue Öffnungszeiten, neues Angebot, anderes Bild oder ein frischer Text? Schreib Romy eine Nachricht und deine Website wird weiter gepflegt.',
-            },
-          ].map((s) => (
-            <div key={s.n} className="rounded-2xl border border-black/[0.06] bg-white p-7 shadow-[0_2px_8px_-4px_rgba(26,23,20,0.06),0_12px_32px_-18px_rgba(26,23,20,0.12)]">
-              <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full bg-[#1a1714] text-sm font-bold text-[#f5efe2]">{s.n}</div>
-              <h3 className="mb-2 text-lg font-semibold text-[#1a1714]">{s.title}</h3>
-              <p className="text-sm leading-relaxed text-[#1a1714]/60">{s.text}</p>
-            </div>
-          ))}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {industries.map((ind) => (
+              <a
+                key={ind.label}
+                href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer"
+                className="group relative rounded-[1.8rem] border border-black/[0.07] bg-[#f7f8f3] p-7 transition hover:border-[#6f8000]/30 hover:bg-[#f2f7e4]"
+              >
+                {ind.tag && (
+                  <span className="mb-4 inline-flex rounded-full bg-[#6f8000] px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.2em] text-white">
+                    {ind.tag}
+                  </span>
+                )}
+                {!ind.tag && <div className="mb-4 h-[1.625rem]" />}
+                <h3 className="text-xl font-black tracking-tight">{ind.label}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#11110f]/55">{ind.description}</p>
+                <p className="mt-5 text-sm font-black text-[#6f8000] opacity-0 transition group-hover:opacity-100">
+                  Jetzt starten →
+                </p>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section id="presence" className="mx-auto max-w-3xl px-6 py-20 text-center text-[#1a1714]">
-        <h2 className="mb-6 text-3xl font-semibold tracking-tight">Schreiben statt klicken.</h2>
-        <p className="mb-10 text-lg text-[#1a1714]/65">
-          Such dir ein Template aus oder erzähl Romy einfach, was du machst. Sie baut deine Seite. Willst du später was ändern, schreibst du ihr eine Nachricht. So einfach wie eine WhatsApp.
-        </p>
-        <a
-          href="#chat"
-          className="inline-flex items-center gap-2 rounded-xl bg-[#1a1714] px-7 py-3 text-base font-bold text-[#f5efe2] transition hover:bg-[#2a2522]"
-        >
-          Jetzt kostenlos testen
-        </a>
+      {/* ── VERGLEICH (dark) ── */}
+      <section id="vergleich" className="bg-[#11110f] px-5 py-24 sm:px-6 lg:py-32">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto mb-16 max-w-3xl text-center">
+            <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#a6bd00]">Warum Luna?</p>
+            <h2 className="mt-5 text-4xl font-black leading-[0.95] tracking-[-0.05em] text-white sm:text-[4.4rem]">
+              Baukasten kostet Zeit.{' '}
+              <br className="hidden sm:block" />
+              Designer kosten Geld.
+            </h2>
+            <p className="mt-6 text-lg leading-9 text-white/45">
+              Luna gibt dir beides: eine individuelle Website sofort —
+              und Änderungen wann immer du willst, per Chat.
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            {comparison.map((item) => (
+              <div
+                key={item.label}
+                className={`rounded-[1.8rem] p-8 ${
+                  item.highlight
+                    ? 'bg-[#e9ff83] text-[#11110f]'
+                    : 'border border-white/[0.08] bg-white/[0.04]'
+                }`}
+              >
+                <p className={`text-2xl font-black tracking-tight ${item.highlight ? 'text-[#11110f]' : 'text-white'}`}>
+                  {item.label}
+                </p>
+                <p className={`mt-1 text-sm font-semibold ${item.highlight ? 'text-[#11110f]/50' : 'text-white/30'}`}>
+                  {item.sub}
+                </p>
+
+                <div className="mt-8 space-y-5">
+                  {item.rows.map((row) => (
+                    <div key={row.key}>
+                      <p className={`text-[0.65rem] font-black uppercase tracking-[0.18em] ${item.highlight ? 'text-[#6f8000]' : 'text-white/30'}`}>
+                        {row.key}
+                      </p>
+                      <p className={`mt-1 text-base font-bold ${item.highlight ? 'text-[#11110f]' : 'text-white/65'}`}>
+                        {row.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {item.highlight && (
+                  <a
+                    href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer"
+                    className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-[#11110f] px-6 py-3.5 text-sm font-black text-white transition hover:bg-[#2e302a]"
+                  >
+                    Kostenlos starten
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
-      <footer className="mt-20 bg-[#1a1714] text-[#f5efe2]">
-        <div className="mx-auto max-w-5xl px-6 py-10">
-          <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+      {/* ── FEATURES ── */}
+      <section className="px-5 py-24 sm:px-6 lg:py-32">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto mb-16 max-w-3xl text-center">
+            <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#6f8000]">Was Luna baut</p>
+            <h2 className="mt-5 text-4xl font-black leading-[0.95] tracking-[-0.05em] sm:text-[4.4rem]">
+              Alles was eine Website braucht —{' '}
+              <span className="text-[#6f8000]">nichts was du selbst tun musst.</span>
+            </h2>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {features.map((f) => (
+              <div
+                key={f.title}
+                className="rounded-[1.8rem] border border-black/[0.07] bg-white/60 p-7 backdrop-blur"
+              >
+                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-[#e9ff83]">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#6f8000]" />
+                </div>
+                <h3 className="text-lg font-black tracking-tight">{f.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#11110f]/55">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── EXAMPLES ── */}
+      <section id="examples" className="bg-white px-5 py-24 sm:px-6 lg:py-32">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto mb-16 max-w-3xl text-center">
+            <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#6f8000]">Website-Beispiele</p>
+            <h2 className="mt-5 text-4xl font-black leading-[0.95] tracking-[-0.05em] sm:text-[4.4rem]">
+              Bilder, Texte und Stil werden passend zur Branche.
+            </h2>
+            <p className="mt-6 text-lg leading-9 text-[#11110f]/55">
+              Genau das muss die Seite verkaufen: Luna macht aus wenig Material
+              einen hochwertigen ersten Eindruck.
+            </p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            {examples.map((example) => (
+              <article
+                key={example.title}
+                className="group overflow-hidden rounded-[2rem] border border-black/[0.07] bg-[#f7f8f3] shadow-[0_30px_90px_-70px_rgba(25,31,20,0.5)]"
+              >
+                <div className="overflow-hidden">
+                  <Image
+                    src={example.image}
+                    alt={`${example.title} Website-Beispiel`}
+                    width={1200}
+                    height={900}
+                    className="h-80 w-full object-cover transition duration-700 group-hover:scale-105"
+                  />
+                </div>
+                <div className="p-6">
+                  <h3 className="text-2xl font-black tracking-tight">{example.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[#11110f]/55">{example.text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── ABLAUF ── */}
+      <section id="how" className="px-5 py-24 sm:px-6 lg:py-32">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-14 lg:grid-cols-[0.9fr_1fr] lg:items-center lg:gap-20">
             <div>
-              <div className="text-sm font-semibold">Romy AI</div>
-              <p className="mt-1 text-xs text-[#f5efe2]/55">
-                Berlin
+              <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#6f8000]">Ablauf</p>
+              <h2 className="mt-5 text-4xl font-black leading-[0.95] tracking-[-0.05em] sm:text-[4.4rem]">
+                Kein Editor. Kein leeres Template.
+              </h2>
+              <p className="mt-6 max-w-xl text-lg leading-9 text-[#11110f]/55">
+                Du beschreibst dein Geschäft — Luna programmiert deine Website.
+                Danach kannst du alles per Chat anpassen: Texte, Bilder, Farben, Inhalte.
+                Ganz ohne Technik-Kenntnisse.
               </p>
             </div>
-            <nav className="flex flex-wrap gap-5 text-xs text-[#f5efe2]/55">
-              <a href="#chat" className="hover:text-[#f5efe2]">Chat</a>
-              <a href="mailto:halloromy.ai@gmail.com" className="hover:text-[#f5efe2]">Support anfordern</a>
-              <Link href="/datenschutz" className="hover:text-[#f5efe2]">Datenschutz</Link>
-              <Link href="/agb" className="hover:text-[#f5efe2]">Nutzungsbedingungen</Link>
+
+            <div className="grid gap-4">
+              {outcomes.map(([n, text]) => (
+                <div
+                  key={n}
+                  className="flex items-center gap-6 rounded-[1.7rem] border border-white/55 bg-white/40 p-7 shadow-[0_34px_100px_-80px_rgba(25,31,20,0.45)] backdrop-blur-xl"
+                >
+                  <span className="text-4xl font-black tabular-nums text-[#6f8000]">{n}</span>
+                  <p className="text-xl font-black leading-tight tracking-tight">{text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section id="starten" className="px-5 pb-24 sm:px-6 lg:pb-36">
+        <div className="mx-auto max-w-5xl rounded-[2.4rem] border border-white/55 bg-white/42 px-6 py-20 text-center shadow-[0_48px_130px_-90px_rgba(25,31,20,0.45)] backdrop-blur-xl sm:px-12">
+          <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#6f8000]">Jetzt starten</p>
+          <h2 className="mx-auto mt-5 max-w-3xl text-4xl font-black leading-[0.95] tracking-[-0.05em] sm:text-[4.6rem]">
+            Starte mit deinem kostenlosen Entwurf.
+          </h2>
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-9 text-[#11110f]/55">
+            Schreib Luna kurz, wer du bist und was dein Geschäft macht.
+            Dein erster Entwurf ist in Minuten fertig — kostenlos, ohne Kreditkarte.
+          </p>
+          <a
+            href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer"
+            className="mt-9 inline-flex rounded-full bg-[#11110f] px-7 py-4 text-base font-black text-white shadow-[0_24px_58px_-36px_rgba(22,26,18,0.7)] transition hover:bg-[#2e302a]"
+          >
+            Kostenlosen Entwurf erstellen
+          </a>
+          <p className="mt-5 text-sm font-medium text-[#11110f]/42">
+            Erst Entwurf ansehen. Danach entscheiden.
+          </p>
+        </div>
+      </section>
+
+      <footer className="border-t border-black/[0.06] bg-white/70 text-[#11110f]">
+        <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6">
+          <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+            <div>
+              <div className="text-sm font-black">Luna</div>
+              <p className="mt-1 text-xs text-[#11110f]/40">Berlin</p>
+            </div>
+            <nav className="flex flex-wrap gap-5 text-xs font-medium text-[#11110f]/45">
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:text-[#11110f]">WhatsApp</a>
+              <a href="mailto:halloluna.ai@gmail.com" className="hover:text-[#11110f]">Support</a>
+              <Link href="/datenschutz" className="hover:text-[#11110f]">Datenschutz</Link>
+              <Link href="/agb" className="hover:text-[#11110f]">Nutzungsbedingungen</Link>
+              <Link href="/impressum" className="hover:text-[#11110f]">Impressum</Link>
             </nav>
           </div>
-          <p className="mt-8 text-[11px] leading-relaxed text-[#f5efe2]/35">
-            © {new Date().getFullYear()} Romy AI. Alle Rechte vorbehalten. Romy AI ist ein Einzelunternehmen nach § 19 UStG (Kleinunternehmerregelung, keine Umsatzsteuer ausgewiesen).
+          <p className="mt-8 text-[11px] leading-relaxed text-[#11110f]/30">
+            © {new Date().getFullYear()} Luna AI. Alle Rechte vorbehalten. Luna AI ist ein Einzelunternehmen nach § 19 UStG.
           </p>
         </div>
       </footer>

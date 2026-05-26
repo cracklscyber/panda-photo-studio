@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   const stripe = new Stripe(secret)
-  const origin = req.headers.get('origin') || 'https://halloromy.com'
+  const origin = req.headers.get('origin') || 'https://halloluna.net'
 
   try {
     const portal = await stripe.billingPortal.sessions.create({

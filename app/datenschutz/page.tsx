@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-export const metadata = { title: 'Datenschutzerklärung — Romy AI' }
+export const metadata = { title: 'Datenschutzerklärung — Hallo Luna' }
 
 export default function Datenschutz() {
   return (
@@ -8,7 +8,7 @@ export default function Datenschutz() {
       <header className="border-b border-neutral-200/60">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            Romy<span className="text-neutral-400">.ai</span>
+            Hallo Luna
           </Link>
           <Link href="/" className="text-sm text-neutral-600 hover:text-neutral-900">← Zurück</Link>
         </div>
@@ -20,13 +20,13 @@ export default function Datenschutz() {
 
         <Section title="1. Verantwortliche">
           <p>
-            Verantwortlich für die Datenverarbeitung auf dieser Website und im Zusammenhang mit dem Website-Chat „Romy" ist:
+            Verantwortlich für die Datenverarbeitung auf dieser Website und im Zusammenhang mit dem Website-Chat „Hallo Luna" ist:
           </p>
           <p className="mt-3">
-            ROMIAI<br />
+            Luna AI<br />
             Berlin<br />
             Deutschland<br />
-            E-Mail: <a href="mailto:halloromy.ai@gmail.com" className="underline">halloromy.ai@gmail.com</a>
+            E-Mail: <a href="mailto:halloluna.ai@gmail.com" className="underline">halloluna.ai@gmail.com</a>
           </p>
         </Section>
 
@@ -45,9 +45,9 @@ export default function Datenschutz() {
           </p>
         </Section>
 
-        <Section title="4. Chat-Kommunikation mit Romy">
+        <Section title="4. Chat-Kommunikation mit Luna">
           <p>
-            Wenn Sie Romy über den Website-Chat kontaktieren, verarbeiten wir die von Ihnen gesendeten Nachrichteninhalte sowie eine technische Sitzungskennung. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung/Anfragebearbeitung) bzw. Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Kontaktaufnahme).
+            Wenn Sie Luna über den Website-Chat kontaktieren, verarbeiten wir die von Ihnen gesendeten Nachrichteninhalte sowie eine technische Sitzungskennung. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung/Anfragebearbeitung) bzw. Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Kontaktaufnahme).
           </p>
           <p className="mt-3">
             Der Chat wird über diese Website bereitgestellt. Nachrichten werden zur Bearbeitung Ihrer Anfrage sowie zur Pflege Ihrer Website gespeichert, solange dies für die Leistungserbringung erforderlich ist. Sie können jederzeit die Löschung Ihrer Daten verlangen (siehe Abschnitt 10).
@@ -68,7 +68,7 @@ export default function Datenschutz() {
 
         <Section title="6. Speicherung der Website-Daten">
           <p>
-            Die von Romy für Sie erstellte Website sowie Ihre Nachrichtenhistorie werden in einer Supabase-Datenbank (Supabase Inc.) gespeichert. Supabase hostet personenbezogene Daten auf Servern in der EU (Frankfurt). Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.
+            Die von Luna für Sie erstellte Website sowie Ihre Nachrichtenhistorie werden in einer Supabase-Datenbank (Supabase Inc.) gespeichert. Supabase hostet personenbezogene Daten auf Servern in der EU (Frankfurt). Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.
           </p>
         </Section>
 
@@ -109,7 +109,7 @@ export default function Datenschutz() {
             <li>Widerruf erteilter Einwilligungen (Art. 7 Abs. 3 DSGVO)</li>
           </ul>
           <p className="mt-3">
-            Anfragen richten Sie bitte an <a href="mailto:halloromy.ai@gmail.com" className="underline">halloromy.ai@gmail.com</a>.
+            Anfragen richten Sie bitte an <a href="mailto:halloluna.ai@gmail.com" className="underline">halloluna.ai@gmail.com</a>.
           </p>
         </Section>
 

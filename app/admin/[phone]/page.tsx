@@ -43,7 +43,7 @@ function parseChatContent(content: string): {
     siteUrl = siteMarkerMatch[1]
     text = text.replace(siteMarkerRe, '').trim()
   } else {
-    const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloromy\.(?:ai|com)\/(?:site\/)?[a-z0-9-]+/i
+    const siteUrlRe = /https?:\/\/(?:[a-z0-9-]+\.)?halloluna\.net\/(?:site\/)?[a-z0-9-]+/i
     const m = text.match(siteUrlRe)
     if (m) {
       siteUrl = m[0]
@@ -234,7 +234,7 @@ export default async function ConvoPage({
           </div>
           {site?.slug && (
             <a
-              href={`https://${site.slug}.halloromy.com`}
+              href={`https://${site.slug}.halloluna.net`}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-full border border-[#1a1714]/12 bg-white/70 px-4 py-1.5 text-xs font-medium text-[#1a1714]/80 transition hover:border-[#1a1714]/25 hover:bg-white"
@@ -268,7 +268,7 @@ export default async function ConvoPage({
                   <div
                     className={`mb-1 text-xs font-medium ${m.role === 'user' ? 'text-blue-600' : 'text-neutral-500'}`}
                   >
-                    {m.role === 'user' ? 'User' : 'Romy'}
+                    {m.role === 'user' ? 'User' : 'Luna'}
                   </div>
                   {imageUrls.length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-2">
