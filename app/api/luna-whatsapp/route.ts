@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const STRIPE_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
-const CAL_URL = 'https://cal.com/luna.ai/15min'
+const CAL_URL = 'https://cal.com/luna.ai/30min'
 
 const ACK_FIRST =
   'Alles klar, ich leg jetzt los. Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
