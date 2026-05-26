@@ -1060,7 +1060,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     const reply = safeReply(
       parsed.assistant,
       run.exitCode === 0
-        ? 'Dein erster Entwurf ist fertig. Schau ihn dir in Ruhe an und schreib mir danach einfach, was ich ändern soll.'
+        ? 'Dein erster Entwurf ist fertig! Wir bauen ihn jetzt gemeinsam aus, so individuell wie du ihn haben möchtest. Schreib mir einfach, was geändert werden soll. Und schick mir gerne eigene Fotos von deinem Unternehmen oder wir generieren gemeinsam passende Bilder.'
         : 'Tut mir leid, ich konnte den Entwurf gerade nicht sauber fertigstellen. Ich leite das ans Team weiter.'
     )
 

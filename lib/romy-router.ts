@@ -126,8 +126,27 @@ function classifyIntentLocally(
   return buildSignals.some((signal) => text.includes(signal)) ? 'build' : 'chat'
 }
 
-function localChatReply(userMessage: string, hasImage: boolean): string {
-  const text = userMessage.toLowerCase()
+const WELCOME_MESSAGE =
+  'Hallo! Ich bin Luna, deine persönliche Website-Assistentin. 🌿\n\n' +
+  'Ich baue dir nicht nur eine Website, ich bin dauerhaft für dich da. Texte ändern, neue Bilder erstellen, Design anpassen, Öffnungszeiten updaten: einfach hier im Chat schreiben, ich setze es um.\n\n' +
+  'Möchtest du starten?'
+
+const ONBOARDING_QUESTION =
+  'Super! Wie heißt dein Unternehmen und was machst du genau? ' +
+  'Wenn du magst, sag auch kurz welchen Look du dir vorstellst, ' +
+  'zum Beispiel modern und minimalistisch, warm und verspielt oder editorial und hochwertig.'
+
+function localChatReply(userMessage: string, hasImage: boolean, history: HistoryMsg[]): string {
+  const text = userMessage.toLowerCase().trim()
+
+  // Zweiter Onboarding-Schritt: Luna hat gefragt "Möchtest du starten?" und User sagt Ja
+  const lastAssistant = [...history].reverse().find(m => m.role === 'assistant')?.content || ''
+  if (
+    lastAssistant.includes('Möchtest du starten?') &&
+    /^(ja|yes|jep|jo|yep|klar|gerne|los|starten|start|ok|okay|mach|sure)\b/.test(text)
+  ) {
+    return ONBOARDING_QUESTION
+  }
 
   if (hasImage) {
     return 'Ich habe dein Bild bekommen. Sag mir kurz, ob ich es auf die Website setzen, ersetzen oder bearbeiten soll.'
@@ -141,8 +160,8 @@ function localChatReply(userMessage: string, hasImage: boolean): string {
     return 'Eigene Domains sind grundsätzlich möglich. Für den ersten Entwurf nutze ich erst mal eine Luna-Vorschau, danach kann sich jemand aus dem Team um die Domain kümmern.'
   }
 
-  if (/\b(hallo|hi|hey|start|test)\b/.test(text)) {
-    return 'Hallo, Luna hier. Erzähl mir kurz: was für ein Geschäft ist es, wie heißt es und in welcher Stadt bist du?'
+  if (/\b(hallo|hi|hey|start|test)\b/.test(text) || history.length === 0) {
+    return WELCOME_MESSAGE
   }
 
   return 'Hab ich. Sag mir kurz, was ich für deine Website machen soll, dann lege ich mit dem Entwurf los.'
@@ -199,9 +218,9 @@ const CHAT_SYSTEM = `Du bist Luna, eine freundliche deutsche Chat-Assistentin vo
 
 **Onboarding (sehr wichtig — geht VOR allem anderen):**
 
-Die erste Begrüßung ("Hey, ich bin Luna, deine persönliche Website-Assistentin. Möchtest du starten?") und die zweite Nachricht nach "Ja" ("Dann fangen wir an mit deinem Entwurf. Erzähl mir etwas über deine Firma — was machst du. Sollen wir dir Bilder für deine Website generieren? Sag mal konkret, was du haben möchtest.") werden automatisch in der UI/vom Server angezeigt — DU schreibst sie nicht nochmal.
+Die Begrüßung und die Frage nach dem Unternehmen werden automatisch vom Server gesendet. DU schreibst sie nicht nochmal.
 
-Wenn die Kundin während des Onboardings etwas anderes fragt, beantworte die Frage kurz und hilfreich, dann führe freundlich zurück zum nächsten Onboarding-Schritt. Niemals die Frage ignorieren. Beispiel: "Ja, eigene Domains sind möglich. Dafür vereinbaren wir am besten kurz einen Beratungstermin. Für den Entwurf nutzen wir erst mal eine Luna-Vorschau. Erzähl mir kurz: was machst du, wie heißt dein Unternehmen und in welcher Stadt bist du?"
+Wenn die Kundin während des Onboardings etwas anderes fragt, beantworte die Frage kurz und hilfreich, dann führe freundlich zurück: "Erzähl mir kurz, wie dein Unternehmen heißt und was du machst, dann lege ich los."
 
 Bei Designfragen gib eine echte Empfehlung. Beispiel: Für lokale Geschäfte wirkt meist eine ruhige, gut lesbare Sans-Schrift am besten; für Beauty, Boutique, Coaching oder Premium-Angebote kann eine elegante Serif-Schrift für Überschriften gut wirken. Farben leitest du aus Branche, Stimmung und Angebot ab. Danach zurück zum Onboarding.
 
@@ -230,7 +249,7 @@ Erwarteter Ablauf nach der zweiten Nachricht:
 Wenn die Kundin direkt einen Entwurf ohne Bilder will ("bau einfach los", "keine Bilder, mach"): respektiere das und frag dann nur kurz "Soll ich loslegen?".
 
 Wenn die Kundin zu wenig Infos zur Firma gibt (nur "Hi", "Ja", "Hallo" oder nichts Konkretes), frag genau einmal höflich nach:
-"Erzähl mir kurz: was für ein Geschäft ist es und wie heißt es, in welcher Stadt bist du."
+"Wie heißt dein Unternehmen und was machst du genau?"
 
 Wenn die Kundin von sich aus einen Link mitschickt (Website, Instagram, Google Maps): wir analysieren Links NICHT mehr aktiv im ersten Build. Antworte: "Den Link schau ich mir gerne nach dem ersten Entwurf an. Erzähl mir trotzdem kurz in eigenen Worten: was du machst, wie es heißt, in welcher Stadt und welcher Stil." Sag NICHT, du würdest den Link analysieren oder daraus bauen.
 
@@ -355,7 +374,7 @@ export async function generateChatReply(
   const t0 = Date.now()
   if (usesClaudeCodeOAuth()) {
     return {
-      reply: localChatReply(userMessage, hasImage),
+      reply: localChatReply(userMessage, hasImage, history),
       ms: Date.now() - t0,
       usage: { input: 0, output: 0 },
     }
