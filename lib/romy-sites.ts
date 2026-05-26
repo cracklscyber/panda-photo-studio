@@ -150,8 +150,8 @@ export async function findSiteByDomain(domain: string): Promise<RomySite | null>
   return (data as RomySite) || null
 }
 
-async function extractBusinessName(userMessage: string): Promise<string | null> {
-  const url = extractFirstUrl(userMessage)
+async function extractBusinessName(context: string): Promise<string | null> {
+  const url = extractFirstUrl(context)
   if (url) {
     const fromUrl = await extractBusinessNameFromUrl(url)
     if (fromUrl) return fromUrl
@@ -163,13 +163,13 @@ async function extractBusinessName(userMessage: string): Promise<string | null> 
       model: 'claude-sonnet-4-6',
       max_tokens: 40,
       system:
-        'Du extrahierst aus einer deutschen Nachricht eine kurze Bezeichnung fürs Geschäft, die als URL-Subdomain taugt.\n' +
+        'Du extrahierst aus einem deutschen Chat-Verlauf eine kurze Bezeichnung fürs Geschäft, die als URL-Subdomain taugt.\n' +
         'Antworte NUR mit der Bezeichnung, nichts sonst. Keine Anführungszeichen, keine Erklärung.\n' +
         'Reihenfolge:\n' +
         '1. Wenn ein konkreter Eigenname da ist ("Cafe Sonne", "Friseur Müller"), nutze den.\n' +
         '2. Sonst nutze den Branchentyp ("Nagelstudio", "Friseur", "Cafe", "Pizzeria", "Tierarzt"). Nur das Substantiv, keine Füllwörter.\n' +
         '3. Nur wenn wirklich nichts erkennbar ist (reine Begrüßung o.ä.), antworte mit: NONE',
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [{ role: 'user', content: context }],
     })
     const text = res.content
       .map((b) => (b.type === 'text' ? b.text : ''))
@@ -185,12 +185,20 @@ async function extractBusinessName(userMessage: string): Promise<string | null> 
 
 export async function getOrCreateSite(
   phone: string,
-  userMessage: string
+  userMessage: string,
+  history: { role: string; content: string }[] = []
 ): Promise<RomySite> {
   const existing = await findSiteByPhone(phone)
   if (existing) return existing
 
-  const businessName = await extractBusinessName(userMessage)
+  // Ganze History als Kontext mitgeben damit der Firmenname auch dann
+  // erkannt wird wenn die aktuelle Nachricht nur "ja" oder "mach los" ist.
+  const context = history
+    .filter((m) => m.role === 'user')
+    .map((m) => m.content)
+    .concat(userMessage)
+    .join('\n')
+  const businessName = await extractBusinessName(context)
   const slugBase = businessName || 'kunde'
   const slug = await uniquifySlug(slugBase)
 

@@ -202,7 +202,7 @@ async function processMessage(message: IncomingMessage) {
   }
 
   // Step 3: build → ack first, then run coder, then send final reply
-  const site = await getOrCreateSite(phone, text || 'Neue Website')
+  const site = await getOrCreateSite(phone, text || 'Neue Website', history)
 
   // Quota gate: free tier covers FREE_BUILD_LIMIT build events.
   if ((site.builds_used ?? 0) >= FREE_BUILD_LIMIT && !site.paid) {
