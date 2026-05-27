@@ -28,7 +28,7 @@ const ACK_FOLLOWUP =
 
 function buildLimitMessage(_phone: string): string {
   return [
-    'Deine kostenlosen Änderungen sind aufgebraucht. Für 39 Euro im Monat läuft alles weiter: unbegrenzte Änderungen vornehmen, deine Seite live schalten und eine eigene Domain bekommen. Kein Vertrag, keine Mindestlaufzeit.',
+    'Deine kostenlosen Änderungen sind aufgebraucht. Für 35 Euro im Monat läuft alles weiter: unbegrenzte Änderungen vornehmen, deine Seite live schalten und eine eigene Domain bekommen. Kein Vertrag, keine Mindestlaufzeit.',
     '',
     `Du kannst direkt hier starten: ${STRIPE_URL}`,
     `Oder erst einen kurzen Termin buchen: ${CAL_URL}`,
