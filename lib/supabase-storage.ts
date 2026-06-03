@@ -22,13 +22,10 @@ export function sitePublicUrl(slug: string, path = 'index.html'): string {
   return `https://${slug}.${apex}${suffix}`
 }
 
+// Preview uses subdomain too — wildcard *.halloluna.net routes it automatically.
+// Not "live" in the business sense, but a clean URL from day one.
 export function sitePreviewUrl(slug: string, path = 'index.html'): string {
-  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloluna.net')
-    .trim()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '')
-  const suffix = path && path !== 'index.html' ? `/${path}` : ''
-  return `https://${apex}/site/${slug}${suffix}`
+  return sitePublicUrl(slug, path)
 }
 
 const LIST_PAGE = 100
