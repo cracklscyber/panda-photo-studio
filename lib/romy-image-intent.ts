@@ -53,6 +53,9 @@ const ITERATION_TRIGGERS: RegExp[] = [
 const CONFIRM_TRIGGERS: RegExp[] = [
   /\b(perfekt|passt|super|ja\s+gut|gefällt mir|behalten|nimm das|nimm es|das ist es|ja\s+das|so ist es gut)\b/i,
   /^\s*(ja|jo|jep|jap|okay|ok)\s*[.!?]*\s*$/i,
+  /\b(füg|einbau|einfüg|hinzufüg|add|insert|nehm|übernehm)[a-zäöüß]*\s*(es|das|bild|foto)?\s*(ein|hinzu|in die|zur)?\b/i,
+  /\b(in die|auf die|zur)\s*(website|seite|web)/i,
+  /\b(bitte\s+)?(einbauen|einfügen|hinzufügen|integrieren|verwenden|benutzen|nutzen)\b/i,
 ]
 
 const CANCEL_TRIGGERS: RegExp[] = [
