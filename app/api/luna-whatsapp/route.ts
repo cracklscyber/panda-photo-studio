@@ -343,7 +343,16 @@ async function processMessage(message: IncomingMessage) {
   if (routed.intent === 'chat') {
     const raw = routed.chat_reply || 'Sag mir einfach, was ich für deine Seite machen soll.'
     const reply = sanitizeReply(raw) || 'Sag mir einfach, was ich für deine Seite machen soll.'
-    await sendWhatsAppMessage(metaFrom, reply)
+    // If reply contains Cal.com link → send as CTA button instead of plain text
+    const calMatch = reply.match(/https:\/\/cal\.com\/[^\s\]]+/)
+    if (calMatch) {
+      const calUrl = calMatch[0]
+      const bodyText = reply.replace(calUrl, '').replace(/\s{2,}/g, ' ').trim()
+      const sent = await sendWhatsAppCTA(metaFrom, bodyText, 'Termin buchen 📅', calUrl).catch(() => false)
+      if (!sent) await sendWhatsAppMessage(metaFrom, reply)
+    } else {
+      await sendWhatsAppMessage(metaFrom, reply)
+    }
     await appendAssistantOnly(phone, reply).catch(() => {})
     return
   }
