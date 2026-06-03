@@ -23,7 +23,7 @@ const AGENT_MAX_TURNS = 6
 const REQUIRE_CLAUDE_FRONTEND_DESIGN =
   process.env.ROMY_REQUIRE_CLAUDE_FRONTEND_DESIGN !== '0'
 const ALLOW_TEMPLATE_FALLBACK =
-  !REQUIRE_CLAUDE_FRONTEND_DESIGN && process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
+  process.env.ROMY_ALLOW_TEMPLATE_FALLBACK !== '0'
 
 const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Luna, einer Chat-Assistentin von Hallo Luna, die Websites für lokale Geschäfte baut. Arbeite im cwd mit Read, Write, Edit, Glob, Grep. Haupt-Datei ist immer index.html. Output: in sich geschlossenes HTML, mobile-first, modernes CSS, Google Fonts via <link> okay, keine Tailwind-CDN, kein React/Next, keine Base64-Bilder, keine relativen ../-Pfade, Deutsch falls nicht anders gewünscht.
 
@@ -68,6 +68,14 @@ Du bekommst Branche und ggf. Stilwunsch — daraus baust du selbständig mit gut
 
 Erst NACH dem Build darfst du nach konkreten Infos oder Fotos fragen.
 
+## Buttons, Links und Buchungen
+Wenn die Kundin einen Button, Link oder Call-to-Action ändern möchte, setze das direkt in der bestehenden index.html um.
+- Bei "Termin buchen", "Termin vereinbaren", "Beratung buchen", "Jetzt buchen" oder ähnlichen Wünschen: Wenn die aktuelle Nachricht oder der Verlauf einen Kalender-/Buchungslink enthält (z.B. cal.com, Calendly, Google Calendar Appointment Schedule, Doctolib, Treatwell oder eine normale https-URL), verlinke den Button direkt dorthin.
+- Wenn ein Button gewünscht ist, aber kein Ziel-Link vorhanden ist, baue einen gut sichtbaren Button als Platzhalter mit href="#kontakt" oder mailto/tel, falls Kontaktinformationen vorhanden sind, und antworte kurz: "Schick mir noch deinen Kalenderlink, dann verbinde ich den Button direkt damit."
+- Schreibe Links niemals nur als nackten Text auf die Seite, wenn daraus ein klarer Button werden soll.
+- Öffne externe Buchungslinks mit target="_blank" und rel="noopener noreferrer". Telefonnummern als tel:, E-Mails als mailto:.
+- Wenn die Kundin später einen Link schickt ("hier ist mein Kalenderlink: ..."), ersetze den Platzhalter sofort durch diesen Link und bestätige kurz, dass der Button verbunden ist.
+
 ## Design-Philosophie
 Inspiration: openstudiosberlin.com, bloomandbeyondberlin.de, daluma.de, engelvoelkers.com. Minimalistisch-warm, viel Atemraum, leise Selbstsicherheit, Premium-Feel ohne Glitzer.
 
@@ -87,6 +95,8 @@ Verbindliche Defaults:
 
 ## Bilder (HARTE REGEL — keine erfundenen URLs)
 Halluzinierte Unsplash-IDs sind das größte Qualitätsproblem: 404 → blaues Fragezeichen im Browser. Erfinde NIEMALS eine Foto-ID aus dem Gedächtnis. Es gibt nur drei erlaubte Bildquellen:
+
+Wenn die Kundin ausdrücklich "Bilder generieren", "Fotos generieren", "KI-Bilder", "eigene Bilder" oder ähnlich schreibt, behaupte NIEMALS, dass Luna keine KI-Bilder generieren kann. Diese Anfrage wird außerhalb dieses Website-Builds behandelt. Falls du so eine Anfrage trotzdem im Build-Kontext siehst, ändere die Website nicht heimlich auf Stock-Fotos, sondern antworte kurz: "Ich erstelle dir die Bilder separat im Chat. Deine Website fasse ich dafür nicht ungefragt an."
 
 1. **Kundenbilder (höchste Priorität):** Wenn der Kunde Bilder mitgeschickt hat, nutze sie direkt (Hero, Galerie, Team-Foto je nach Kontext). Bei klarem Kontext aus der Nachricht nicht zurückfragen — einfach einbauen.
 
@@ -448,7 +458,31 @@ async function createRomySandbox(
 async function runFastFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult> {
   const t0 = Date.now()
   const message = input.userMessage
-  const explicitName = message.match(/(?:heisse|heiße|heisst|heißt|name ist|ich bin)\s+([^.,\n-]+)/i)?.[1]?.trim()
+  const context = [
+    ...(input.history || []).map((m) => m.content),
+    message,
+  ].join('\n')
+  const bookingUrl =
+    context.match(/https?:\/\/(?:www\.)?(?:cal\.com|calendly\.com|calendar\.app\.google|doctolib\.[^\s<>"']*|treatwell\.[^\s<>"']*)[^\s<>"']*/i)?.[0]?.replace(/[),.;]+$/g, '') ||
+    null
+  const wantsBooking =
+    /\b(termin|kalender|buchung|buchen|beratung buchen|probetraining|reservier|reservierung)\b/i.test(context)
+  const primaryCtaLabel = wantsBooking
+    ? 'Termin buchen'
+    : isDogBusiness(message)
+      ? 'Training anfragen'
+      : 'Anfrage starten'
+  const primaryCtaHref = bookingUrl || '#kontakt'
+  const requestedBusiness = message
+    .match(/website\s+für\s+mein(?:e|en)?\s+(.+?)\s+(?:in|aus|erstellen|bauen|machen|brauche|haben)/i)?.[1]
+    ?.replace(/\b(geschäft|unternehmen|betrieb|laden)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const explicitNameRaw = message.match(/(?:heisse|heiße|heisst|heißt|name ist|ich bin)\s+([^.,\n-]+)/i)?.[1]?.trim()
+  const explicitName =
+    explicitNameRaw && !/^(selbstständig|selbststaendig|selbständig|selbstaendig|freiberuflich)\b/i.test(explicitNameRaw)
+      ? explicitNameRaw
+      : undefined
   const personName = explicitName
     ?.replace(/\b(hundcoach|hundetrainer|hundetraining|hundecoach|coach|trainer|autohaus|café|cafe)\b/gi, '')
     .replace(/\s+(in|aus|und|mit|biete)\s+.*$/i, '')
@@ -468,7 +502,8 @@ async function runFastFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult
         ? `Hundetraining ${personName.charAt(0).toUpperCase()}${personName.slice(1)}`
         : 'Hundetraining'
       : explicitName?.replace(/\s+(und|in)\s+.*/i, '').trim() ||
-        (isCar ? 'Autohaus' : isCafe ? 'Café' : isBeauty ? 'Studio' : isFitness ? 'Training Studio' : 'Deine Website')
+        requestedBusiness ||
+        (isCar ? 'Autohaus' : isCafe ? 'Café' : isBeauty ? 'Studio' : isFitness ? 'Sportstudio' : 'Deine Website')
   const hero = isDog
     ? 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=1600&q=80&auto=format&fit=crop'
     : isCar
@@ -547,14 +582,14 @@ async function runFastFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult
   </style>
 </head>
 <body>
-  <header class="hero"><div><div class="eyebrow">${isDog ? `Hundetraining in ${location}` : location}</div><h1>${businessName}</h1><p class="lead">${heroLine}</p><a class="cta" href="#kontakt">${isDog ? 'Training anfragen' : 'Anfrage starten'}</a></div></header>
+  <header class="hero"><div><div class="eyebrow">${isDog ? `Hundetraining in ${location}` : location}</div><h1>${businessName}</h1><p class="lead">${heroLine}</p><a class="cta" href="${escapeHtml(primaryCtaHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''}>${primaryCtaLabel}</a></div></header>
   <section><div class="wrap"><p class="statement">${isDog ? 'Ein ruhiger erster Entwurf für Menschen, die mit ihrem Hund mehr Sicherheit, Orientierung und Vertrauen aufbauen möchten.' : 'Ein sauberer erster Entwurf mit warmem Look, klarer Struktur und viel Raum für dein Angebot.'}</p></div></section>
   <section><div class="wrap"><div class="grid">${services
     .map((service, index) => `<article class="card"><h3>${service}</h3><p>${serviceCopy[index] || serviceCopy[0]}</p></article>`)
     .join('')}</div></div></section>
   <section><div class="wrap split"><div class="photo one" aria-label="Atmosphärisches Bild"></div><div class="text"><h2>${isDog ? 'Training, das im Alltag ankommt' : 'Angebot im Fokus'}</h2><p>${isDog ? 'Diese Seite ist vorbereitet für Webinare, Live-Training, Beratungsangebote, Ablauf und Kontakt. Eigene Bilder und konkrete Kursdetails können als Nächstes direkt ergänzt werden.' : 'Diese Seite ist vorbereitet für Leistungen, Bilder, Preise, Öffnungszeiten und Kontakt. Alles kann im Chat weiter angepasst werden.'}</p></div></div></section>
   <section><div class="wrap split"><div class="text"><h2>${isDog ? 'Online und vor Ort' : 'Klar und aktuell'}</h2><p>${isDog ? `Online-Webinare und Training auf großem Grundstück in ${location} bekommen jeweils einen eigenen, klaren Platz.` : 'Besucher sehen schnell, worum es geht, wie sie Kontakt aufnehmen und warum sie dir vertrauen können.'}</p></div><div class="photo two" aria-label="Detailbild"></div></div></section>
-  <section id="kontakt"><div class="wrap split"><div><h2>Kontakt in ${location}</h2><p class="lead">${businessName} · Adresse, Telefon, E-Mail und Öffnungszeiten können hier direkt ergänzt werden.</p></div><a class="cta" style="color:var(--ink);border-color:var(--accent)" href="mailto:">Kontakt aufnehmen</a></div></section>
+  <section id="kontakt"><div class="wrap split"><div><h2>Kontakt in ${location}</h2><p class="lead">${businessName} · Adresse, Telefon, E-Mail und Öffnungszeiten können hier direkt ergänzt werden.</p></div><a class="cta" style="color:var(--ink);border-color:var(--accent)" href="${escapeHtml(primaryCtaHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''}>${primaryCtaLabel}</a></div></section>
   <footer><div class="wrap">${businessName} · ${location}</div></footer>
 </body>
 </html>`
@@ -562,7 +597,11 @@ async function runFastFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult
   await uploadSiteFile(input.slug, 'index.html', html, 'text/html')
   return {
     ok: true,
-    reply: 'Fertig, ich habe dir einen ersten schnellen Entwurf gebaut. Ich habe erstmal passende Beispielbilder eingefügt, eigene Fotos kannst du mir danach direkt schicken.',
+    reply: bookingUrl
+      ? 'Fertig, ich habe dir einen ersten schnellen Entwurf gebaut und den Termin-Button mit deinem Kalenderlink verbunden. Eigene Fotos kannst du mir danach direkt schicken.'
+      : wantsBooking
+        ? 'Fertig, ich habe dir einen ersten schnellen Entwurf mit Termin-Button gebaut. Schick mir noch deinen Kalenderlink, dann verbinde ich den Button direkt damit.'
+        : 'Fertig, ich habe dir einen ersten schnellen Entwurf gebaut. Ich habe erstmal passende Beispielbilder eingefügt, eigene Fotos kannst du mir danach direkt schicken.',
     files_changed: ['index.html'],
     site_url: sitePreviewUrl(input.slug),
     duration_ms: Date.now() - t0,

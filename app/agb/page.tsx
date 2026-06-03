@@ -1,6 +1,12 @@
 import Link from 'next/link'
 
-export const metadata = { title: 'Nutzungsbedingungen — Hallo Luna' }
+export const metadata = {
+  title: 'Nutzungsbedingungen — Hallo Luna',
+  robots: {
+    index: false,
+    follow: false,
+  },
+}
 
 export default function AGB() {
   return (

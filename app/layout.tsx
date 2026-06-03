@@ -1,20 +1,27 @@
 import type { Metadata, Viewport } from 'next'
-import { DM_Sans, Fraunces } from 'next/font/google'
+import { Bricolage_Grotesque, Onest } from 'next/font/google'
 import './globals.css'
 import { MetaPixelConsent } from '@/components/meta-pixel-consent'
 
-const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-sans' })
-const fraunces = Fraunces({
+const bricolage = Bricolage_Grotesque({
   subsets: ['latin'],
   variable: '--font-display',
+  weight: ['700', '800'],
+  display: 'swap',
+})
+
+const onest = Onest({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
 })
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID
 
 export const metadata: Metadata = {
-  title: 'Hallo Luna — Deine Website per Chat',
-  description: 'Luna baut dir eine moderne neue Website direkt im Chat. Kein Baukasten, kein Agenturtermin, einfach schreiben.',
+  title: 'Luna.ai — Deine individuelle Website per WhatsApp',
+  description: 'Luna baut deine Website aus wenigen Nachrichten. Mit echten Texten, passenden Bildern und individuellem Design. Änderungen jederzeit per WhatsApp.',
 }
 
 export const viewport: Viewport = {
@@ -23,7 +30,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#f5efe2',
+  themeColor: '#ffffff',
 }
 
 export default function RootLayout({
@@ -32,8 +39,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="de" className={`${dmSans.variable} ${fraunces.variable}`}>
-      <body className={dmSans.className}>
+    <html lang="de" className={`${bricolage.variable} ${onest.variable}`}>
+      <body className={onest.className}>
         {PIXEL_ID && <MetaPixelConsent pixelId={PIXEL_ID} />}
         {children}
       </body>

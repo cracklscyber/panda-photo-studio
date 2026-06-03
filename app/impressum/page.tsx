@@ -1,6 +1,12 @@
 import Link from 'next/link'
 
-export const metadata = { title: 'Impressum — Luna AI' }
+export const metadata = {
+  title: 'Impressum — Luna AI',
+  robots: {
+    index: false,
+    follow: false,
+  },
+}
 
 export default function Impressum() {
   return (

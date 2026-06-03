@@ -1,8 +1,9 @@
 // Detects explicit user requests to generate / iterate images via Gemini.
 // Pure heuristics — no LLM call — so detection adds zero latency.
 //
-// SAFETY: All callers must check `process.env.ROMY_GEMINI_IMAGES === 'true'`
-// before reacting to the result. When the flag is off, treat as no-op.
+// SAFETY: callers should handle image intents before the website-build path.
+// If image generation is unavailable, answer with a clear image-specific
+// fallback instead of letting the request fall through to the site coder.
 
 import type { ChatMessage } from './romy-chat'
 
@@ -11,13 +12,18 @@ export const IMAGE_CONFIRMED_MARKER = '[ROMY_IMAGE_CONFIRMED:'
 export const USER_IMAGE_MARKER = '[ROMY_USER_IMAGE:'
 
 const GENERATE_TRIGGERS: RegExp[] = [
-  /\b(generier|erstell|mach|erzeug|kreier)[a-zäöüß]*\s+(mir\s+)?(ein|nen|noch|bitte|doch)?\s*(eigenes?|individuelles?|neues?|extra)?\s*(bild|foto|hero|grafik|illustration)/i,
-  /\b(bild|foto|grafik)\s+(generieren|erstellen|machen|erzeugen|kreieren|gestalten)/i,
-  /\b(kannst\s+du|könntest\s+du)\s+.*(bild|foto|grafik)/i,
+  /\b(generier|erstell|mach|erzeug|kreier)[a-zäöüß]*\s+(mir\s+)?(ein|nen|noch|bitte|doch)?\s*(eigenes?|individuelles?|neues?|extra)?\s*(bild(?:er)?|foto(?:s)?|hero|grafik(?:en)?|illustration(?:en)?)/i,
+  /\b(bild(?:er)?|foto(?:s)?|grafik(?:en)?)\s+(generieren|erstellen|machen|erzeugen|kreieren|gestalten)/i,
+  /\b(kannst\s+du|könntest\s+du)\s+.*(bild(?:er)?|foto(?:s)?|grafik(?:en)?)/i,
   /\b(create|generate|make)\s+(an?\s+)?(image|picture|photo)/i,
   /\bgeneriere?\s+/i,
   /\bAI[-\s]?Bild/i,
   /\bKI[-\s]?Bild/i,
+]
+
+const IMAGE_PROBLEM_TRIGGERS: RegExp[] = [
+  /\b(ich\s+)?(sehe|seh|bekomme|finde)\s+(keine|kein)\s+(bild(?:er)?|foto(?:s)?|grafik(?:en)?)/i,
+  /\b(bild(?:er)?|foto(?:s)?)\s+(fehlen|sind nicht da|kommen nicht|wurden nicht geschickt)/i,
 ]
 
 // "Schwache" Trigger - werden nur erkannt, wenn das Wort Bild/Foto auch fällt.
@@ -87,6 +93,7 @@ export function detectImageIntent(
   // Generation trigger — strong words always; "eigenes bild" only with bild/foto
   const triggered =
     GENERATE_TRIGGERS.some((r) => r.test(text)) ||
+    IMAGE_PROBLEM_TRIGGERS.some((r) => r.test(text)) ||
     STRONG_GENERATE_TRIGGERS.some((r) => r.test(text))
   if (triggered) {
     return { kind: 'generate', rawPrompt: text }
@@ -152,5 +159,7 @@ export function extractConfirmedImageUrls(history: ChatMessage[]): string[] {
 }
 
 export function isFeatureEnabled(): boolean {
-  return (process.env.ROMY_GEMINI_IMAGES || '').trim().toLowerCase() === 'true'
+  const flag = (process.env.ROMY_GEMINI_IMAGES || '').trim().toLowerCase()
+  if (flag === 'off') return false
+  return !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || flag === 'true'
 }

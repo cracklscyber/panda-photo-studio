@@ -1,6 +1,12 @@
 import Link from 'next/link'
 
-export const metadata = { title: 'Daten löschen — Hallo Luna' }
+export const metadata = {
+  title: 'Daten löschen — Hallo Luna',
+  robots: {
+    index: false,
+    follow: false,
+  },
+}
 
 export default function DatenLoeschen() {
   return (

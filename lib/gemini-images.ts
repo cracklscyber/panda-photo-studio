@@ -4,9 +4,18 @@ import { uploadSiteFile, sitePreviewUrl } from './supabase-storage'
 let _client: GoogleGenAI | null = null
 function gemini(): GoogleGenAI {
   if (!_client) {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
+    const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim()
     if (!apiKey) throw new Error('GEMINI_API_KEY missing')
-    _client = new GoogleGenAI({ apiKey })
+
+    // The SDK can prefer GOOGLE_API_KEY from process.env even when apiKey is
+    // passed explicitly. Luna's image key is GEMINI_API_KEY, so prefer it hard.
+    const originalGoogleKey = process.env.GOOGLE_API_KEY
+    if (process.env.GEMINI_API_KEY) delete process.env.GOOGLE_API_KEY
+    try {
+      _client = new GoogleGenAI({ apiKey })
+    } finally {
+      if (originalGoogleKey !== undefined) process.env.GOOGLE_API_KEY = originalGoogleKey
+    }
   }
   return _client
 }

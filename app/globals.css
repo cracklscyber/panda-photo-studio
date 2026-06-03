@@ -2,9 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap');
+
 :root {
   --foreground-rgb: 26, 23, 20;
-  --background: #f1ead9;
+  --background: #f1f2f9;
   --brand-cream: #f1ead9;
   --brand-cream-soft: #f5efe2;
   --brand-sage: #b8c7ab;

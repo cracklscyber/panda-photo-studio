@@ -45,6 +45,17 @@ function classifyIntentLocally(
     'farbe',
     'schrift',
     'layout',
+    'button',
+    'cta',
+    'termin buchen',
+    'terminbutton',
+    'kalenderlink',
+    'buchungslink',
+    'calendly',
+    'cal.com',
+    'link einbauen',
+    'verlink',
+    'href',
     'mach das',
     'leg los',
     'loslegen',
@@ -136,8 +147,78 @@ const ONBOARDING_QUESTION =
   'Wenn du magst, sag auch kurz welchen Look du dir vorstellst, ' +
   'zum Beispiel modern und minimalistisch, warm und verspielt oder editorial und hochwertig.'
 
+const QUALIFICATION_QUESTION =
+  'Hast du ein eigenes Unternehmen, ein lokales Geschäft oder bist du selbstständig?'
+
+const QUALIFICATION_ACCEPTED_REPLY =
+  'Perfekt, dann passt Luna. Wie heißt dein Unternehmen und was machst du genau? ' +
+  'Wenn du magst, sag auch kurz welchen Look du dir vorstellst, ' +
+  'zum Beispiel modern und minimalistisch, warm und verspielt oder editorial und hochwertig.'
+
+const QUALIFICATION_DECLINED_REPLY =
+  'Danke dir. Luna ist aktuell für Menschen gedacht, die eine Website für ein Unternehmen, ein lokales Geschäft oder ihre Selbstständigkeit brauchen. Wenn du später ein eigenes Projekt hast, kannst du gerne wiederkommen.'
+
+const QUALIFICATION_DECLINED_REMINDER =
+  'Du hattest gesagt, dass es nicht um ein Unternehmen, ein lokales Geschäft oder deine Selbstständigkeit geht. Deshalb ist Luna aktuell leider nicht das passende Produkt für dich. Wenn du später ein eigenes Projekt hast, kannst du gerne wiederkommen.'
+
+function hasQualificationQuestion(history: HistoryMsg[]): boolean {
+  return history.some((m) => m.role === 'assistant' && m.content.includes(QUALIFICATION_QUESTION))
+}
+
+function hasDeclinedQualification(history: HistoryMsg[]): boolean {
+  return history.some(
+    (m) =>
+      m.role === 'assistant' &&
+      (m.content.includes('Luna ist aktuell für Menschen gedacht') ||
+        m.content.includes('nicht das passende Produkt für dich'))
+  )
+}
+
+function isAffirmative(text: string): boolean {
+  return /^(ja|yes|jep|jo|yep|klar|genau|stimmt|richtig|habe ich|hab ich|bin ich|mache ich|natürlich|sicher)\b/.test(text)
+}
+
+function isNegative(text: string): boolean {
+  return /^(nein|nee|ne|no|nö|nope|privat|nur privat|nicht|hab ich nicht|habe ich nicht|bin ich nicht)\b/.test(text)
+}
+
+function hasBusinessQualificationSignal(text: string): boolean {
+  return /\b(unternehmen|firma|gmbh|ug|ag|geschäft|geschaeft|laden|lokal|praxis|studio|agentur|selbstständig|selbststaendig|selbständig|selbstaendig|freiberuflich|freelancer|restaurant|café|cafe|friseur|kosmetik|handwerk|autohaus|kanzlei|coach|coaching)\b/.test(text)
+}
+
+function qualificationReply(userMessage: string, history: HistoryMsg[]): string | null {
+  const text = userMessage.toLowerCase().trim()
+
+  if (hasDeclinedQualification(history)) {
+    return QUALIFICATION_DECLINED_REMINDER
+  }
+
+  const askedQualification = hasQualificationQuestion(history)
+
+  if (askedQualification && isNegative(text)) {
+    return QUALIFICATION_DECLINED_REPLY
+  }
+
+  if (askedQualification && (isAffirmative(text) || hasBusinessQualificationSignal(text))) {
+    return QUALIFICATION_ACCEPTED_REPLY
+  }
+
+  if (askedQualification) {
+    return 'Ich frage nur kurz, damit ich einschätzen kann, ob Luna passt: Geht es um dein Unternehmen, ein lokales Geschäft oder deine Selbstständigkeit?'
+  }
+
+  if (history.length === 0 && !hasBusinessQualificationSignal(text)) {
+    return QUALIFICATION_QUESTION
+  }
+
+  return null
+}
+
 function localChatReply(userMessage: string, hasImage: boolean, history: HistoryMsg[]): string {
   const text = userMessage.toLowerCase().trim()
+
+  const qualification = qualificationReply(userMessage, history)
+  if (qualification) return qualification
 
   // Zweiter Onboarding-Schritt: Luna hat gefragt "Möchtest du starten?" und User sagt Ja
   const lastAssistant = [...history].reverse().find(m => m.role === 'assistant')?.content || ''
@@ -160,11 +241,19 @@ function localChatReply(userMessage: string, hasImage: boolean, history: History
     return 'Eigene Domains sind grundsätzlich möglich. Für den ersten Entwurf nutze ich erst mal eine Luna-Vorschau, danach kann sich jemand aus dem Team um die Domain kümmern.'
   }
 
-  if (/\b(hallo|hi|hey|start|test)\b/.test(text) || history.length === 0) {
+  if (/\b(termin|kalender|buchungslink|calendly|cal\.com|button)\b/.test(text)) {
+    return 'Ja, ich kann einen Button wie „Termin buchen“ einbauen und mit deinem Kalenderlink verbinden. Schick mir einfach den Link, dann setze ich ihn auf die Seite.'
+  }
+
+  if (history.length > 0 && /\b(hallo|hi|hey|start|test)\b/.test(text)) {
+    return 'Willkommen zurück. Sag mir einfach, was ich an deiner Seite ändern oder ergänzen soll.'
+  }
+
+  if (history.length === 0 && /\b(hallo|hi|hey|start|test)\b/.test(text)) {
     return WELCOME_MESSAGE
   }
 
-  return 'Hab ich. Sag mir kurz, was ich für deine Website machen soll, dann lege ich mit dem Entwurf los.'
+  return 'Schreib mir kurz, was du für deine Seite brauchst. Wenn es um Bilder geht, sag mir direkt welches Motiv oder welche Richtung du haben möchtest.'
 }
 
 const CLASSIFY_SYSTEM = `Du bist ein Intent-Classifier für Luna, eine deutsche Chat-Assistentin, die Websites für Geschäfte baut.
@@ -174,6 +263,7 @@ Entscheide: Will die Kundin konkret etwas AN IHRER WEBSITE ändern/bauen lassen,
 **BUILD** (Website anfassen):
 - Neue Seite erstellen ("bau mir eine Seite", "erstell mir eine Website")
 - Inhalt ändern ("änder die Öffnungszeiten", "füg xy hinzu", "lösch die Sektion")
+- Button oder Link einbauen/ändern ("Termin buchen Button", "verlink das mit meinem Kalender", "hier ist mein Calendly/Cal.com-Link")
 - Design anpassen ("mach es bunter", "andere Farbe", "neue Schriftart")
 - Konkrete Freigabe nach Rückfrage ("ja mach das", "los", "passt", "direkt loslegen")
 - **Bestätigung nach Bild-Generierung:** Wenn Luna gerade Bilder erstellt und gefragt hat "Soll ich mit dem ersten Website-Entwurf beginnen?", und die Kundin bejaht ("ja", "los", "mach", "okay") → BUILD.
@@ -206,8 +296,8 @@ const CHAT_SYSTEM = `Du bist Luna, eine freundliche deutsche Chat-Assistentin vo
 - NIEMALS die Wörter "Cool" oder "professionell" verwenden. Wenn du etwas als hochwertig beschreiben willst, nutze "hochwertig", "sauber", "in Ruhe" oder "stimmig", aber nie "professionell".
 - Vermeide es, "Alles klar" oder "Klar" als ständigen Standard-Einstieg zu benutzen. Variiere: "Mach ich", "Geht klar", "Okay", "Verstehe", "Hab's", oder steig direkt in die Sache ein ohne Floskel.
 - NIEMALS konkrete Bauzeiten behaupten ("30 Sekunden", "in einer Minute", "gleich fertig"). Die UI zeigt dem Kunden schon den Status. Wenn überhaupt: "ein Moment" oder gar nichts, niemals eine Zahl.
-- Ein "Hallo, Luna hier" oder "Hi, ich bin Luna" zur Begrüßung ist normal und okay. Nur keine aufgesetzten Callcenter-Floskeln ("wie kann ich dir behilflich sein", "es freut mich" etc.)
-- Keine Emojis. Wenn überhaupt ein Akzent, dann ein typografisches Zeichen (· – →). Niemals 😊🎉👍💭✨ o.ä.
+- Ein "Hallo, Luna hier" oder "Hi, ich bin Luna" ist nur beim allerersten Kontakt okay. Wenn im Verlauf bereits Nachrichten stehen, begrüße die Kundin nicht wieder wie neu. Beziehe dich auf die bestehende Seite oder die letzte Bitte.
+- Emojis sind sparsam erlaubt, höchstens ein Emoji in einer Antwort und nur wenn es natürlich wirkt. Keine Emoji-Ketten, kein überdrehtes 🎉🎉🎉.
 - Keine Markdown-Überschriften, keine Codeblöcke
 - Keine Sternchen (*) in der Antwort. Kein *Fett*, kein **Bold**, keine *Hervorhebungen*, keine Aufzählungen mit *. Schreib ganz normal in Fließtext.
 - Kein HTML, keine Klassennamen, keine Dateipfade (nichts wie <div>, index.html, style.css etc.)
@@ -296,6 +386,9 @@ Lies die bisherige Konversation aufmerksam. Beziehe dich aktiv auf was die Kundi
 - Stelle Zusammenhänge her: wenn die Kundin in Nachricht 3 Frühstück erwähnt hat und in Nachricht 12 nach Bildern fragt, schlag passende Bilder zum Frühstücks-Angebot vor.
 - Erinnere dich an Vorlieben, Entscheidungen und Ablehnungen aus dem Chat ("Du wolltest kein Rot, dann lass uns bei Sand und Anthrazit bleiben.").
 
+**Bildwünsche & Befehle:**
+Wenn die Kundin sagt, dass du Bilder/Fotos generieren, austauschen, einbauen oder verändern sollst, nimm das als konkreten Befehl. Antworte nicht ausweichend mit "ich schaue es mir an", wenn klar ist, was sie möchte. Wenn die Bildidee konkret genug ist ("Nagel-Designs", "Hundefotos für Hundeschule", "Obsthof-Bilder"), bestätige kurz und setze es um oder frage nur nach einem Stilwunsch. Wenn sie sehr vage ist ("mach Bilder"), frage nach Motiv und Stil.
+
 **Über die technische Umsetzung sprichst du NIEMALS.** Nenne keine Tools, keine Modelle, keine APIs, keine Anbieter, keine Code-Begriffe (kein "Claude", kein "Gemini", kein "Sandbox", kein "API", kein "Server", kein "Code"). Luna ist die Assistentin, mehr braucht die Kundin nicht zu wissen. Wenn jemand explizit fragt "wie funktioniert das technisch?": antworte freundlich-knapp, dass du das selbst zusammenbaust und die Kundin sich darum nicht kümmern muss.
 
 Wenn sie fragt was es kostet: derzeit in Beta, probier's einfach aus.
@@ -328,6 +421,14 @@ export async function classifyIntent(
   hasImage: boolean
 ): Promise<{ intent: 'build' | 'chat'; ms: number; usage: { input: number; output: number } }> {
   const t0 = Date.now()
+  if (qualificationReply(userMessage, history)) {
+    return {
+      intent: 'chat',
+      ms: Date.now() - t0,
+      usage: { input: 0, output: 0 },
+    }
+  }
+
   if (usesClaudeCodeOAuth()) {
     return {
       intent: classifyIntentLocally(history, userMessage, hasImage),
@@ -372,6 +473,15 @@ export async function generateChatReply(
   hasImage: boolean
 ): Promise<{ reply: string; ms: number; usage: { input: number; output: number } }> {
   const t0 = Date.now()
+  const qualification = qualificationReply(userMessage, history)
+  if (qualification) {
+    return {
+      reply: qualification,
+      ms: Date.now() - t0,
+      usage: { input: 0, output: 0 },
+    }
+  }
+
   if (usesClaudeCodeOAuth()) {
     return {
       reply: localChatReply(userMessage, hasImage, history),

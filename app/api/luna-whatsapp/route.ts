@@ -4,8 +4,15 @@ import { waitUntil } from '@vercel/functions'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
+import { detectImageIntent, isFeatureEnabled as imageFeatureEnabled } from '@/lib/romy-image-intent'
+import {
+  cancelDraftImage,
+  confirmDraftImage,
+  generateDraftImage,
+} from '@/lib/romy-image-session'
 import {
   getOrCreateSite,
+  findSiteByPhone,
   updateSiteSandboxId,
   incrementBuildCount,
   markCallbackRequested,
@@ -14,6 +21,7 @@ import {
 import { loadHistory, appendAssistantOnly, appendUserOnly } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
 import { downloadSiteFile, sitePreviewUrl } from '@/lib/supabase-storage'
+import { transcribeAudio } from '@/lib/gemini-audio'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -24,14 +32,26 @@ const CAL_URL = 'https://cal.com/luna.ai/30min'
 const ACK_FIRST =
   'Alles klar, ich leg jetzt los. Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
-  'Alles klar, ich schau es mir an. Einen Moment.'
+  'Ich setze das jetzt um. Einen Moment.'
 
-function buildLimitMessage(_phone: string): string {
+function stripeCheckoutUrl(phone: string): string {
+  const url = new URL(STRIPE_URL)
+  url.searchParams.set('client_reference_id', phone)
+  return url.toString()
+}
+
+function buildLimitMessage(): string {
   return [
     'Deine kostenlosen Änderungen sind aufgebraucht. Für 35 Euro im Monat läuft alles weiter: unbegrenzte Änderungen vornehmen, deine Seite live schalten und eine eigene Domain bekommen. Kein Vertrag, keine Mindestlaufzeit.',
+  ].join('\n')
+}
+
+function buildLimitFallbackMessage(phone: string): string {
+  return [
+    buildLimitMessage(),
     '',
-    `Du kannst direkt hier starten: ${STRIPE_URL}`,
-    `Oder erst einen kurzen Termin buchen: ${CAL_URL}`,
+    `Direkt starten: ${stripeCheckoutUrl(phone)}`,
+    `Termin buchen: ${CAL_URL}`,
   ].join('\n')
 }
 
@@ -130,6 +150,7 @@ export async function POST(req: NextRequest) {
             type?: string
             text?: { body?: string }
             image?: { id?: string; caption?: string }
+            audio?: { id?: string; mime_type?: string }
           }>
         }
       }>
@@ -159,6 +180,7 @@ interface IncomingMessage {
   type?: string
   text?: { body?: string }
   image?: { id?: string; caption?: string }
+  audio?: { id?: string; mime_type?: string }
 }
 
 async function processMessage(message: IncomingMessage) {
@@ -177,6 +199,23 @@ async function processMessage(message: IncomingMessage) {
       console.error('getMediaUrl failed:', err)
     }
     text = message.image?.caption || ''
+  } else if (message.type === 'audio' && message.audio?.id) {
+    try {
+      const audio = await getMediaData(message.audio.id)
+      text = await transcribeAudio({
+        base64: audio.base64,
+        mimeType: audio.mimeType,
+      })
+    } catch (err) {
+      console.error('audio transcription failed:', err)
+      const reply =
+        'Ich konnte die Sprachnachricht gerade nicht sicher verstehen. Schreib mir den Wunsch bitte kurz als Text, dann setze ich ihn direkt um.'
+      await sendWhatsAppMessage(metaFrom, reply).catch((sendErr) =>
+        console.error('audio fallback send failed:', sendErr)
+      )
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    }
   } else if (message.type === 'document' || message.type === 'video') {
     text = '[Dokument/Video erhalten — bitte sende Bilder oder Text]'
   } else {
@@ -184,6 +223,18 @@ async function processMessage(message: IncomingMessage) {
   }
 
   const history = await loadHistory(phone)
+  const existingSite = await findSiteByPhone(phone).catch(() => null)
+  const routedHistory =
+    existingSite && history.length === 0
+      ? [
+          {
+            role: 'assistant' as const,
+            content:
+              `Kontext: Diese Kundin hat bereits eine Website-Vorschau (${existingSite.slug}). ` +
+              'Begrüße sie nicht wie eine neue Kundin. Frage kurz, was an der bestehenden Seite geändert werden soll.',
+          },
+        ]
+      : history
   const storedUserMessage = imageUrl
     ? `[Bild erhalten]${text ? `\n${text}` : ''}`
     : text || '(leer)'
@@ -191,8 +242,60 @@ async function processMessage(message: IncomingMessage) {
     console.error('appendUserOnly failed:', err)
   )
 
+  // Step 0: explicit image generation / iteration / confirmation.
+  // This must run before the website-build classifier, otherwise requests like
+  // "Generiere mir Nagel Design Bilder" get misrouted into the coder.
+  const imageIntent = detectImageIntent(text || '', history)
+  if (imageIntent.kind !== 'none') {
+    console.log('whatsapp image intent', {
+      phone,
+      kind: imageIntent.kind,
+      featureEnabled: imageFeatureEnabled(),
+    })
+    if (!imageFeatureEnabled()) {
+      const reply =
+        'Die Bildgenerierung ist gerade nicht aktiv. Ich leite das ans Team weiter, damit die Bilder manuell erstellt oder die Funktion wieder aktiviert wird. Deine Website fasse ich dadurch nicht ungefragt an.'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    }
+
+    let imageResult:
+      | Awaited<ReturnType<typeof generateDraftImage>>
+      | ReturnType<typeof confirmDraftImage>
+      | ReturnType<typeof cancelDraftImage>
+
+    if (imageIntent.kind === 'confirm') {
+      imageResult = confirmDraftImage(history)
+    } else if (imageIntent.kind === 'cancel') {
+      imageResult = cancelDraftImage()
+    } else {
+      imageResult = await generateDraftImage({
+        sessionKey: phone,
+        userMessage: imageIntent.rawPrompt,
+        history,
+        isIteration: imageIntent.kind === 'iterate',
+      })
+    }
+
+    const userVisibleReply =
+      stripImageMarkers(imageResult.reply) ||
+      'Ich habe dir einen Bildvorschlag erstellt. Sag mir, ob es so passt.'
+
+    if (imageResult.url && imageResult.status === 'draft') {
+      await sendWhatsAppImage(metaFrom, imageResult.url, userVisibleReply).catch(async (err) => {
+        console.error('image send failed, falling back to text:', err)
+        await sendWhatsAppMessage(metaFrom, `${userVisibleReply}\n${imageResult.url}`)
+      })
+    } else {
+      await sendWhatsAppMessage(metaFrom, userVisibleReply)
+    }
+    await appendAssistantOnly(phone, imageResult.reply).catch(() => {})
+    return
+  }
+
   // Step 1: classify intent (cheap Haiku call)
-  const routed = await routeMessage(history, text || '(leer)', !!imageUrl)
+  const routed = await routeMessage(routedHistory, text || '(leer)', !!imageUrl)
 
   // Step 2: chat → just send reply, persist, done
   if (routed.intent === 'chat') {
@@ -208,16 +311,22 @@ async function processMessage(message: IncomingMessage) {
 
   // Quota gate: free tier covers FREE_BUILD_LIMIT build events.
   if ((site.builds_used ?? 0) >= FREE_BUILD_LIMIT && !site.paid) {
-    const limitMessage = buildLimitMessage(phone)
-    await sendWhatsAppMessage(metaFrom, limitMessage).catch((err) =>
-      console.error('limit message send failed:', err)
-    )
+    const limitMessage = buildLimitMessage()
+    await sendLimitUpsell(metaFrom, phone, limitMessage).catch(async (err) => {
+      console.error('limit upsell send failed:', err)
+      await sendWhatsAppMessage(metaFrom, buildLimitFallbackMessage(phone)).catch((fallbackErr) =>
+        console.error('limit fallback send failed:', fallbackErr)
+      )
+    })
     if (!site.callback_requested_at) {
       await markCallbackRequested(phone).catch((err) =>
         console.error('markCallbackRequested failed:', err)
       )
     }
-    await appendAssistantOnly(phone, limitMessage).catch(() => {})
+    await appendAssistantOnly(
+      phone,
+      `${limitMessage}\n[ROMY_PAYMENT:${stripeCheckoutUrl(phone)}]\n[ROMY_CALENDAR:${CAL_URL}]`
+    ).catch(() => {})
     return
   }
 
@@ -329,6 +438,68 @@ async function sendWhatsAppMessage(to: string, text: string) {
   }
 }
 
+function stripImageMarkers(text: string): string {
+  return sanitizeReply(
+    text
+      .replace(/\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED):[^\]]+\]/g, '')
+      .trim()
+  )
+}
+
+async function sendWhatsAppImage(to: string, imageUrl: string, caption?: string) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const token = process.env.WHATSAPP_TOKEN
+  const safeCaption = caption && caption.length > 1024 ? caption.slice(0, 1020) + '…' : caption
+
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'image',
+        image: {
+          link: imageUrl,
+          ...(safeCaption ? { caption: safeCaption } : {}),
+        },
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('WhatsApp image send error:', err)
+    throw new Error(`WhatsApp image API error: ${res.status}`)
+  }
+}
+
+async function sendLimitUpsell(to: string, phone: string, body: string) {
+  const paymentSent = await sendWhatsAppCTA(
+    to,
+    body,
+    'Jetzt starten',
+    stripeCheckoutUrl(phone)
+  )
+  if (!paymentSent) {
+    throw new Error('payment CTA failed')
+  }
+
+  const bookingSent = await sendWhatsAppCTA(
+    to,
+    'Oder wenn du vorher kurz sprechen möchtest, kannst du dir hier einen Termin für die Beratung buchen.',
+    'Termin buchen',
+    CAL_URL
+  )
+  if (!bookingSent) {
+    throw new Error('booking CTA failed')
+  }
+}
+
 // ── Send a CTA URL button via Meta Cloud API ──
 // body.text max 1024 chars, display_text max 20 chars.
 async function sendWhatsAppCTA(
@@ -378,6 +549,14 @@ async function sendWhatsAppCTA(
 
 // ── Download media (images) from Meta ──
 async function getMediaUrl(mediaId: string): Promise<string> {
+  const data = await getMediaData(mediaId)
+  return `data:${data.mimeType};base64,${data.base64}`
+}
+
+async function getMediaData(mediaId: string): Promise<{
+  base64: string
+  mimeType: string
+}> {
   const token = process.env.WHATSAPP_TOKEN
 
   const res = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
@@ -392,5 +571,5 @@ async function getMediaUrl(mediaId: string): Promise<string> {
   const base64 = Buffer.from(buffer).toString('base64')
   const mimeType = data.mime_type || 'image/jpeg'
 
-  return `data:${mimeType};base64,${base64}`
+  return { base64, mimeType }
 }

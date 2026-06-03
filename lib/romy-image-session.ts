@@ -40,9 +40,19 @@ function deriveAspect(userMessage: string): '16:9' | '4:3' | '1:1' | '9:16' | '3
   return '4:3'
 }
 
+function extractRecentContext(history: ChatMessage[]): string {
+  return history
+    .slice(-10)
+    .filter((m) => m.content && !m.content.includes(IMAGE_DRAFT_MARKER))
+    .map((m) => `${m.role === 'user' ? 'Customer' : 'Luna'}: ${m.content.replace(/\[[^\]]+\]/g, '').slice(0, 220)}`)
+    .join(' | ')
+}
+
 function composeGeminiPrompt(rawUserPrompt: string, isIteration: boolean, history: ChatMessage[]): string {
   if (!isIteration) {
-    return `${rawUserPrompt}. Photo-realistic, high detail, natural daylight, clean composition, no text in image, no watermark.`
+    const ctx = extractRecentContext(history)
+    const contextPrefix = ctx ? `Context from the website chat: ${ctx}. ` : ''
+    return `${contextPrefix}Current image request: ${rawUserPrompt}. Create an image that fits the customer's business, website style, and latest request. Photo-realistic, high detail, natural daylight, clean composition, no text in image, no watermark.`
   }
   const ctx = extractDraftPromptContext(history)
   return `${ctx}. ${rawUserPrompt}. Photo-realistic, high detail, no text in image, no watermark.`
@@ -96,7 +106,7 @@ export async function generateDraftImage(opts: {
     console.error('generateDraftImage failed:', err)
     return {
       reply:
-        'Da hat die Bild-Generierung gerade gehakt. Lass uns ohne eigenes Bild weitermachen, ich nehme erstmal ein passendes Stock-Foto. Du kannst es später jederzeit austauschen.',
+        'Die Bildgenerierung hat gerade technisch nicht geklappt. Ich habe das an mein Team weitergeleitet, damit die Bilder manuell erstellt oder die Funktion geprüft wird. Ich ändere deine Website deshalb nicht ungefragt.',
       status: 'error',
     }
   }

@@ -20,72 +20,50 @@ import { CafeSiteSlide, EndCTA, TapIndicator } from "./CafeSiteSlide";
 const CANVAS_W = 2160;
 const CANVAS_H = 2700;
 
-type ChatItem = {
-  kind: "user" | "romy" | "card";
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  asset: string;
-};
+type BubbleData = { kind: "user" | "luna"; x: number; y: number; w: number; text: string; time: string };
+type CardData   = { kind: "card"; x: number; y: number; w: number; h: number };
+type ChatItemData = BubbleData | CardData;
 
-// Hardcoded from assets/video/geometry.json — kept in-source so the
-// composition is self-contained and doesn't need a runtime JSON fetch.
-const CHAT: ChatItem[] = [
-  { kind: "user", x: 871, y: 1092, w: 607, h: 242, asset: "bubble_01.png" },
-  { kind: "romy", x: 682, y: 1312, w: 723, h: 242, asset: "bubble_02.png" },
-  { kind: "user", x: 862, y: 1532, w: 616, h: 242, asset: "bubble_03.png" },
-  { kind: "card", x: 682, y: 1752, w: 796, h: 538, asset: "preview_card.png" },
-  { kind: "romy", x: 682, y: 2266, w: 618, h: 182, asset: "bubble_05.png" },
+const CHAT: ChatItemData[] = [
+  { kind: "user", x: 871, y: 1092, w: 607, text: "Hi Luna, ich brauche eine Webseite für mein Café.", time: "09:41" },
+  { kind: "luna", x: 682, y: 1298, w: 723, text: "Wunderbar. Wie heißt dein Café und welche Farben magst du?", time: "09:41" },
+  { kind: "user", x: 862, y: 1504, w: 616, text: "Café Mira — warm, creme, gemütlich.", time: "09:42" },
+  { kind: "card", x: 682, y: 1710, w: 796, h: 558 },
+  { kind: "luna", x: 682, y: 2244, w: 618, text: "Fertig. Live in vier Minuten.", time: "09:46" },
 ];
 
-// Keep the phone visually filled from the first frame.
-const REVEAL_FRAMES = [0, 0, 0, 0, 0];
+const REVEAL_FRAMES = [0, 40, 80, 120, 170];
 
-const ChatAsset: React.FC<{ item: ChatItem; startFrame: number }> = ({
-  item,
-  startFrame,
-}) => {
+const ChatBubble: React.FC<{ item: BubbleData; startFrame: number }> = ({ item, startFrame }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame - startFrame;
-
-  const s = spring({
-    frame: t,
-    fps,
-    config: { damping: 18, stiffness: 140, mass: 0.7 },
-  });
-
-  const opacity = startFrame === 0 ? 1 : interpolate(t, [0, 10], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-
-  // Bubbles rise slightly from below, card settles in from a touch further.
-  const riseFrom = item.kind === "card" ? 40 : 24;
-  const translateY = interpolate(s, [0, 1], [riseFrom, 0]);
+  const s = spring({ frame: t, fps, config: { damping: 18, stiffness: 140, mass: 0.7 } });
+  const opacity = startFrame === 0 ? 1 : interpolate(t, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const translateY = interpolate(s, [0, 1], [24, 0]);
   const scale = interpolate(s, [0, 1], [0.96, 1]);
-
-  // Coordinates are in the 2160x2700 canvas space. We render the whole
-  // composition in that coordinate space and CSS-transform to the output.
+  const isUser = item.kind === "user";
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: item.x,
-        top: item.y,
-        width: item.w,
-        height: item.h,
-        opacity,
-        transform: `translateY(${translateY}px) scale(${scale})`,
-        transformOrigin:
-          item.kind === "user" ? "bottom right" : "bottom left",
-      }}
-    >
-      <Img
-        src={staticFile(`romy-glass-assets/${item.asset}`)}
-        style={{ width: "100%", height: "100%", display: "block" }}
-      />
+    <div style={{ position: "absolute", left: item.x, top: item.y, width: item.w, opacity, transform: `translateY(${translateY}px) scale(${scale})`, transformOrigin: isUser ? "bottom right" : "bottom left" }}>
+      <div style={{ background: isUser ? "#e7ffdb" : "#ffffff", borderRadius: isUser ? "20px 20px 5px 20px" : "20px 20px 20px 5px", padding: "22px 28px 14px 28px", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}>
+        <div style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: 44, color: "#111", lineHeight: 1.35, letterSpacing: -0.5 }}>{item.text}</div>
+        <div style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: 28, color: "rgba(0,0,0,0.4)", textAlign: "right", marginTop: 6 }}>{item.time}</div>
+      </div>
+    </div>
+  );
+};
+
+const ChatCard: React.FC<{ item: CardData; startFrame: number }> = ({ item, startFrame }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame - startFrame;
+  const s = spring({ frame: t, fps, config: { damping: 18, stiffness: 140, mass: 0.7 } });
+  const opacity = startFrame === 0 ? 1 : interpolate(t, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const translateY = interpolate(s, [0, 1], [40, 0]);
+  const scale = interpolate(s, [0, 1], [0.96, 1]);
+  return (
+    <div style={{ position: "absolute", left: item.x, top: item.y, width: item.w, height: item.h, opacity, transform: `translateY(${translateY}px) scale(${scale})`, transformOrigin: "bottom left" }}>
+      <Img src={staticFile("romy-glass-assets/preview_card.png")} style={{ width: "100%", height: "100%", display: "block" }} />
     </div>
   );
 };
@@ -123,7 +101,7 @@ export const RomyGlassAd: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#efe8de" }}>
-      <Audio src={staticFile("romy-voice-jessica-chat-v2.mp3")} volume={1} />
+      <Audio src={staticFile("luna-glass-voice.mp3")} volume={1} />
       <div
         style={{
           position: "absolute",
@@ -175,7 +153,7 @@ export const RomyGlassAd: React.FC = () => {
             color: "#111715",
           }}
         >
-          Romy<span style={{ color: "rgba(17,23,21,0.34)" }}>.ai</span>
+          Luna<span style={{ color: "rgba(17,23,21,0.34)" }}>.ai</span>
         </div>
         <div
           style={{
@@ -192,7 +170,7 @@ export const RomyGlassAd: React.FC = () => {
             color: "rgba(17,23,21,0.72)",
           }}
         >
-          Website per Chat.
+          Website per WhatsApp.
         </div>
         <div
           style={{
@@ -310,7 +288,7 @@ export const RomyGlassAd: React.FC = () => {
               color: "#101619",
             }}
           >
-            Romy
+            Luna
           </div>
           <div
             style={{
@@ -420,11 +398,13 @@ export const RomyGlassAd: React.FC = () => {
             color: "rgba(17,23,21,0.36)",
           }}
         >
-          romy.ai · Website-Chat
+          luna.ai · WhatsApp
         </div>
-        {CHAT.map((item, i) => (
-          <ChatAsset key={item.asset} item={item} startFrame={REVEAL_FRAMES[i]} />
-        ))}
+        {CHAT.map((item, i) =>
+          item.kind === "card"
+            ? <ChatCard key={i} item={item} startFrame={REVEAL_FRAMES[i]} />
+            : <ChatBubble key={i} item={item} startFrame={REVEAL_FRAMES[i]} />
+        )}
         {/* Tap on the preview card (lives inside canvas coords). */}
         <TapIndicator startFrame={TAP_FRAME} cx={1080} cy={2021} />
       </div>

@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { RomyAdVideo } from "./RomyAdVideo";
 import { ProductAdSlide, LunaProductAdVideo } from "./ProductAd";
+import { LunaAutoAd } from "./LunaAutoAd";
 import { RomyStillSlide } from "./RomyStill";
 import { IPhoneMockupSlide } from "./IPhoneMockup";
 import { RomyGlassAd } from "./RomyGlassAd";
@@ -71,9 +72,17 @@ export const RomyAd: React.FC = () => {
         height={1920}
       />
       <Composition
+        id="LunaAutoAd"
+        component={LunaAutoAd}
+        durationInFrames={420}
+        fps={30}
+        width={1080}
+        height={1350}
+      />
+      <Composition
         id="LunaProductAd"
         component={LunaProductAdVideo}
-        durationInFrames={300}
+        durationInFrames={406}
         fps={30}
         width={1080}
         height={1350}
