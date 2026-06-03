@@ -287,9 +287,51 @@ async function processMessage(message: IncomingMessage) {
         console.error('image send failed, falling back to text:', err)
         await sendWhatsAppMessage(metaFrom, `${userVisibleReply}\n${imageResult.url}`)
       })
-    } else {
-      await sendWhatsAppMessage(metaFrom, userVisibleReply)
+      await appendAssistantOnly(phone, imageResult.reply).catch(() => {})
+      return
     }
+
+    // Confirmed: send reply, store marker, then auto-trigger the build
+    if (imageResult.status === 'confirmed') {
+      await sendWhatsAppMessage(metaFrom, userVisibleReply)
+      await appendAssistantOnly(phone, imageResult.reply).catch(() => {})
+      // Reload history so coder sees the IMAGE_CONFIRMED marker
+      const historyWithConfirm = await loadHistory(phone)
+      const updatedRoutedHistory = historyWithConfirm.length > 0 ? historyWithConfirm : routedHistory
+      // Fall through to build with refreshed history
+      const site2 = await getOrCreateSite(phone, text || 'Bild einbauen', historyWithConfirm)
+      if ((site2.builds_used ?? 0) < FREE_BUILD_LIMIT || site2.paid) {
+        const isFirst2 = !site2.last_sandbox_id
+        const ack2 = isFirst2 ? ACK_FIRST : ACK_FOLLOWUP
+        await sendWhatsAppMessage(metaFrom, ack2).catch(() => {})
+        await appendAssistantOnly(phone, ack2).catch(() => {})
+        const coderResult2 = await runRomyCoder({
+          slug: site2.slug,
+          userMessage: text || 'Bild in Website einbauen',
+          imageUrl,
+          history: updatedRoutedHistory,
+          isFirstBuild: isFirst2,
+        })
+        await logBuild({ phone, slug: site2.slug, ok: coderResult2.ok, cost_usd: coderResult2.cost_usd, duration_ms: coderResult2.duration_ms, was_warm: coderResult2.was_warm, user_message: text, error_step: coderResult2.ok ? null : (coderResult2.error_step ?? 'coder_returned_not_ok'), error_msg: coderResult2.ok ? null : (coderResult2.error ?? null), transcript_path: coderResult2.transcript_path }).catch(() => {})
+        if (coderResult2.ok) {
+          if (coderResult2.sandbox_id) await updateSiteSandboxId(phone, coderResult2.sandbox_id).catch(() => {})
+          await incrementBuildCount(phone).catch(() => {})
+          const previewUrl = sitePreviewUrl(site2.slug)
+          const body2 = (coderResult2.reply || 'Fertig! 🎉').trim()
+          await sendWhatsAppCTA(metaFrom, `${body2}\n\n${previewUrl}`, 'Website öffnen', previewUrl).catch(async () => {
+            await sendWhatsAppMessage(metaFrom, `${body2}\n\n${previewUrl}`)
+          })
+          await appendAssistantOnly(phone, `${body2}\n[ROMY_SITE:${previewUrl}]`).catch(() => {})
+        } else {
+          const failReply = 'Ups, da ist was schiefgelaufen. Ich schaue drüber und versuchs nochmal.'
+          await sendWhatsAppMessage(metaFrom, failReply)
+          await appendAssistantOnly(phone, failReply).catch(() => {})
+        }
+      }
+      return
+    }
+
+    await sendWhatsAppMessage(metaFrom, userVisibleReply)
     await appendAssistantOnly(phone, imageResult.reply).catch(() => {})
     return
   }
