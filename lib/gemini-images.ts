@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
-import { uploadSiteFile, sitePreviewUrl } from './supabase-storage'
+import { uploadSiteFile, supabasePublicUrl } from './supabase-storage'
 
 let _client: GoogleGenAI | null = null
 function gemini(): GoogleGenAI {
@@ -86,7 +86,7 @@ export async function generateImage(opts: {
   await uploadSiteFile(opts.slug, path, buffer, mimeType)
 
   return {
-    url: sitePreviewUrl(opts.slug, path),
+    url: supabasePublicUrl(opts.slug, path),
     storagePath: path,
     bytes: buffer.byteLength,
   }

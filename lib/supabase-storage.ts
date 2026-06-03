@@ -123,7 +123,7 @@ export async function downloadSiteFile(slug: string, path: string): Promise<Buff
   return Buffer.from(ab)
 }
 
-function supabasePublicUrl(slug: string, path: string): string {
+export function supabasePublicUrl(slug: string, path: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, '')
   const encoded = `${slug}/${path}`
     .split('/')

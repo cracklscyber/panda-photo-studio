@@ -99,6 +99,23 @@ export function detectImageIntent(
     return { kind: 'generate', rawPrompt: text }
   }
 
+  // Context-aware: if Luna just asked "welches Motiv / welche Richtung" and the
+  // user replies with a description (without explicit trigger words), treat it as
+  // an image generation request.
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
+  if (lastAssistant) {
+    const promptedForDesc = /welches Motiv|welche Richtung|was (für|möchtest) du (sehen|als Bild)|sag mir.*Motiv|beschreib.*Bild/i.test(lastAssistant.content)
+    if (promptedForDesc && text.length > 8) {
+      return { kind: 'generate', rawPrompt: text }
+    }
+    // "Wo bleiben die Bilder?" or "Und?" after Luna promised images
+    const userFrustrated = /wo\s+bleiben|wann\s+komm|noch\s+nicht|hab.*nichts.*bekommen|und\s*\?|die\s+bilder/i.test(text)
+    const lunaPromisedImages = /erstell.*bilder.*chat|bilder.*separat|schick.*bilder/i.test(lastAssistant.content)
+    if (userFrustrated && lunaPromisedImages) {
+      return { kind: 'generate', rawPrompt: text }
+    }
+  }
+
   return { kind: 'none' }
 }
 
