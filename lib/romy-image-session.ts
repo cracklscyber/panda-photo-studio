@@ -22,6 +22,8 @@ const MAX_IMAGES_PER_SESSION = 6
 
 export interface ImageActionResult {
   reply: string
+  /** Short text sent as WhatsApp image caption — never explanatory, just a question. */
+  caption?: string
   url?: string
   status: 'draft' | 'confirmed' | 'cancelled' | 'limit' | 'error'
 }
@@ -95,13 +97,11 @@ export async function generateDraftImage(opts: {
       aspect,
       filename,
     })
-    const intro = opts.isIteration
-      ? 'Neuer Versuch 🎨'
-      : 'Hier dein Bild! 🎨'
-    const tail =
-      'Gefällt es dir? Schreib einfach "passt" und ich baue es direkt in deine Website ein. Oder sag mir was anders sein soll.'
-    const reply = `${intro}\n\n${tail}\n\n${IMAGE_DRAFT_MARKER}${img.url}]`
-    return { reply, url: img.url, status: 'draft' }
+    // Full reply stored in history (with marker for state tracking)
+    const reply = `${IMAGE_DRAFT_MARKER}${img.url}]`
+    // Caption sent on WhatsApp: just a short question, no explanation
+    const caption = 'Gefällt dir das Foto?'
+    return { reply, caption, url: img.url, status: 'draft' }
   } catch (err) {
     console.error('generateDraftImage failed:', err)
     return {

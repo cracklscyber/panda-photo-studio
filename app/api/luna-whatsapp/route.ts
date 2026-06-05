@@ -4,7 +4,7 @@ import { waitUntil } from '@vercel/functions'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
-import { detectImageIntent, isFeatureEnabled as imageFeatureEnabled } from '@/lib/romy-image-intent'
+import { detectImageIntent, isFeatureEnabled as imageFeatureEnabled, needsImagePrompt } from '@/lib/romy-image-intent'
 import {
   cancelDraftImage,
   confirmDraftImage,
@@ -265,6 +265,25 @@ async function processMessage(message: IncomingMessage) {
       | ReturnType<typeof confirmDraftImage>
       | ReturnType<typeof cancelDraftImage>
 
+    // "Nein" im Draft-Modus → nicht blind neu generieren, erst fragen was geändert werden soll
+    if (imageIntent.kind === 'reject') {
+      const rejectReply = 'Was soll ich ändern? Beschreib mir kurz, was du dir vorstellst.'
+      await sendWhatsAppMessage(metaFrom, rejectReply)
+      await appendAssistantOnly(phone, rejectReply).catch(() => {})
+      return
+    }
+
+    // Vage Anfrage ohne Beschreibung (z.B. "kannst du mehr Bilder generieren") → erst fragen
+    if (
+      imageIntent.kind === 'generate' &&
+      needsImagePrompt(imageIntent.rawPrompt)
+    ) {
+      const askReply = 'Was für ein Bild soll ich generieren? Beschreib mir kurz, was du dir vorstellst.'
+      await sendWhatsAppMessage(metaFrom, askReply)
+      await appendAssistantOnly(phone, askReply).catch(() => {})
+      return
+    }
+
     if (imageIntent.kind === 'confirm') {
       imageResult = confirmDraftImage(history)
     } else if (imageIntent.kind === 'cancel') {
@@ -278,18 +297,20 @@ async function processMessage(message: IncomingMessage) {
       })
     }
 
-    const userVisibleReply =
-      stripImageMarkers(imageResult.reply) ||
-      'Ich habe dir einen Bildvorschlag erstellt. Sag mir, ob es so passt.'
-
     if (imageResult.url && imageResult.status === 'draft') {
-      await sendWhatsAppImage(metaFrom, imageResult.url, userVisibleReply).catch(async (err) => {
+      // Caption: nur kurze Frage, kein Erklärungstext
+      const imageCaption = imageResult.caption ?? 'Gefällt dir das Foto?'
+      await sendWhatsAppImage(metaFrom, imageResult.url, imageCaption).catch(async (err) => {
         console.error('image send failed, falling back to text:', err)
-        await sendWhatsAppMessage(metaFrom, `${userVisibleReply}\n${imageResult.url}`)
+        await sendWhatsAppMessage(metaFrom, `${imageCaption}\n${imageResult.url}`)
       })
       await appendAssistantOnly(phone, imageResult.reply).catch(() => {})
       return
     }
+
+    const userVisibleReply =
+      stripImageMarkers(imageResult.reply) ||
+      'Ich habe dir einen Bildvorschlag erstellt. Sag mir, ob es so passt.'
 
     // Confirmed: send reply, store marker, then auto-trigger the build
     if (imageResult.status === 'confirmed') {

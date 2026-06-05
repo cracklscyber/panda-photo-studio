@@ -62,12 +62,31 @@ const CANCEL_TRIGGERS: RegExp[] = [
   /\b(abbrechen|stop|stopp|vergiss|lass|doch nicht|nein lass|nicht generieren)\b/i,
 ]
 
+const REJECT_TRIGGERS: RegExp[] = [
+  /^\s*(nein|nee|nö|nope)\s*[.!?]*\s*$/i,
+  /\b(gefällt mir nicht|nicht gut|sieht.*nicht.*gut|nicht das richtige|falsch|passt nicht|ist nicht|nicht was ich)\b/i,
+  /\b(mag ich nicht|will ich nicht|so nicht)\b/i,
+]
+
 export type ImageIntent =
   | { kind: 'generate'; rawPrompt: string }
   | { kind: 'iterate'; rawPrompt: string }
   | { kind: 'confirm' }
   | { kind: 'cancel' }
+  | { kind: 'reject' }
   | { kind: 'none' }
+
+/** True when the user's request is just a trigger phrase with no actual description.
+ *  In that case the caller should ask what to generate instead of guessing. */
+export function needsImagePrompt(rawPrompt: string): boolean {
+  const stripped = rawPrompt
+    .toLowerCase()
+    .replace(/\b(kannst|könntest|du|mir|mal|noch|weitere?|neue?s?|ein|nen|mach|erstell|generier|kreier|erzeug|bitte|doch|eben|paar|bilder?|fotos?|grafiken?|ai[\s-]?bild|ki[\s-]?bild|ja|okay|ok|gerne|auch|einfach|ein paar)\b/g, ' ')
+    .replace(/[?!.,]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return stripped.length < 10
+}
 
 export function detectImageIntent(
   userMessage: string,
@@ -86,6 +105,11 @@ export function detectImageIntent(
   // Confirmation only counts when there's an active draft (otherwise "ja" means something else)
   if (inDraftMode && CONFIRM_TRIGGERS.some((r) => r.test(text))) {
     return { kind: 'confirm' }
+  }
+
+  // Rejection: user says "nein" → ask what to change, don't auto-generate
+  if (inDraftMode && REJECT_TRIGGERS.some((r) => r.test(text))) {
+    return { kind: 'reject' }
   }
 
   // Iteration only counts when there's an active draft AND user gives modification words
