@@ -57,23 +57,9 @@ function buildLimitFallbackMessage(phone: string): string {
 }
 
 async function getSafePreviewUrl(slug: string): Promise<string> {
-  const subdomainUrl = sitePreviewUrl(slug)
   const ensured = await ensureVercelSubdomain(slug)
-  if (ensured) {
-    try {
-      const res = await fetch(subdomainUrl, {
-        method: 'HEAD',
-        cache: 'no-store',
-      })
-      if (res.ok) return subdomainUrl
-      console.warn(`Preview subdomain check failed for slug "${slug}": ${res.status}`)
-    } catch (err) {
-      console.warn(`Preview subdomain DNS/request failed for slug "${slug}":`, err)
-    }
-  } else {
-    console.warn(`Preview subdomain not ensured for slug "${slug}"`)
-  }
-  console.warn(`Using path preview for slug "${slug}"`)
+  if (ensured) return sitePreviewUrl(slug)
+  console.warn(`Preview subdomain not ensured for slug "${slug}", using path fallback`)
   return sitePathPreviewUrl(slug)
 }
 

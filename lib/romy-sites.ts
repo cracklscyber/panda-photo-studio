@@ -211,7 +211,6 @@ export async function getOrCreateSite(
   if (existing) {
     if (
       !existing.business_name &&
-      !existing.last_sandbox_id &&
       isPlaceholderSlug(existing.slug, phone)
     ) {
       const businessName = await extractBusinessName(context)
