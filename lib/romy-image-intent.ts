@@ -102,12 +102,18 @@ export function needsImagePrompt(rawPrompt: string): boolean {
   return stripped.length < 12
 }
 
+// Purely social messages that can never be an image request regardless of history
+const CONVERSATIONAL_ONLY = /^\s*(danke(\s+luna|\s+dir|\s+schön)?|herzlichen\s+dank|sehr\s+gut|toll|super|wunderbar|prima|schön|great|thanks|thank\s+you|tschüss|auf\s+wiedersehen|bye|ciao|ok(ay)?|perfekt|alles\s+klar|verstanden|klar|passt|ja(\s+gerne)?|gerne)\s*[!.?]*\s*$/i
+
 export function detectImageIntent(
   userMessage: string,
   history: ChatMessage[]
 ): ImageIntent {
   const text = userMessage.trim()
   if (!text) return { kind: 'none' }
+
+  // Short social/ack messages → never image intent, even if history has image context
+  if (CONVERSATIONAL_ONLY.test(text)) return { kind: 'none' }
 
   const inDraftMode = history.length > 0 && hasActiveDraft(history)
 
