@@ -387,8 +387,18 @@ export interface RouterResult {
   chat_usage?: { input: number; output: number }
 }
 
+function cleanContent(content: string): string {
+  return content
+    .replace(/\[ROMY_USER_IMAGE:[^\]]+\]/g, '[Foto von der Kundin]')
+    .replace(/\[ROMY_(?:IMAGE_DRAFT|IMAGE_CONFIRMED|SITE|PAYMENT|CALENDAR):[^\]]+\]/g, '')
+    .trim()
+}
+
 function formatHistory(history: HistoryMsg[], maxTurns = 8): HistoryMsg[] {
-  return history.slice(-maxTurns).filter((m) => m.content && m.content.trim().length > 0)
+  return history
+    .slice(-maxTurns)
+    .map((m) => ({ ...m, content: cleanContent(m.content) }))
+    .filter((m) => m.content.length > 0)
 }
 
 
