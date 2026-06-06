@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { waitUntil } from '@vercel/functions'
 import { createHmac, timingSafeEqual } from 'crypto'
-import { routeMessage } from '@/lib/romy-router'
+import { classifyDraftResponse, routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
 import { detectImageIntent, isFeatureEnabled as imageFeatureEnabled, needsImagePrompt } from '@/lib/romy-image-intent'
 import {
@@ -20,7 +20,7 @@ import {
 } from '@/lib/romy-sites'
 import { loadHistory, appendAssistantOnly, appendUserOnly } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
-import { downloadSiteFile, sitePathPreviewUrl, sitePreviewUrl } from '@/lib/supabase-storage'
+import { downloadSiteFile, sitePathPreviewUrl, sitePreviewUrl, uploadUserChatImage } from '@/lib/supabase-storage'
 import { transcribeAudio } from '@/lib/gemini-audio'
 import { ensureVercelSubdomain } from '@/lib/vercel-domains'
 
@@ -31,9 +31,183 @@ const STRIPE_URL = 'https://buy.stripe.com/eVq00k0jc2r4251cZl7EQ00'
 const CAL_URL = 'https://cal.com/luna.ai/30min'
 
 const ACK_FIRST =
-  'Alles klar, ich leg jetzt los. Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
+  'Alles klar, ich leg jetzt los 🚀 Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
-  'Ich setze das jetzt um. Einen Moment.'
+  'Mach ich, ich setze das jetzt um ✨'
+
+const SOCIAL_ACK_RE =
+  /^\s*(ja\s+)?(danke|dankeschön|danke\s+schön|vielen\s+dank|herzlichen\s+dank|merci|thanks)(\s+(dir|luna))?\s*[!.?]*\s*$/i
+const TEXT_DRAFT_MARKER = '[ROMY_TEXT_DRAFT:'
+const CHANGE_DRAFT_MARKER = '[ROMY_CHANGE_DRAFT:'
+const REJECTION_RE =
+  /\b(nein|nee|ne|anders|nochmal|gefällt nicht|gefaellt nicht|passt nicht|nicht so|änder|aender|umschreib|umformulieren)\b/i
+const TEXT_REQUEST_RE =
+  /\b(text|texte|copy|formulierung|formulier|schreib|schreibe|headline|überschrift|ueberschrift|beschreibung|über uns|ueber uns|slogan|angebot|aktion|besser|bessern|verbesser|einfügen|einfuegen|einbauen)\b/i
+const CHANGE_REQUEST_RE =
+  /\b(änder|aender|füge|fuege|einbauen|einfügen|einfuegen|ersetzen|löschen|loeschen|mach|button|link|termin|kalender|farbe|schrift|layout|sektion|bereich|angebot|öffnungszeiten|oeffnungszeiten|preise|adresse|telefon)\b/i
+
+function hasRecentImageDraft(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i]
+    if (item.role !== 'assistant') continue
+    if (item.content.includes('[ROMY_IMAGE_DRAFT:')) return true
+    if (item.content.includes('[ROMY_IMAGE_CONFIRMED:')) return false
+    return false
+  }
+  return false
+}
+
+function socialAckReply(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): string | null {
+  if (!SOCIAL_ACK_RE.test(text.trim())) return null
+  if (hasRecentImageDraft(history)) {
+    return 'Sehr gerne! Soll ich das Bild auf deine Website einbauen? 😊'
+  }
+  return 'Sehr gerne! Sag mir einfach, was du als Nächstes ändern oder ergänzen möchtest 😊'
+}
+
+function encodeDraft(text: string): string {
+  return Buffer.from(text, 'utf8').toString('base64url')
+}
+
+function decodeDraft(encoded: string): string | null {
+  try {
+    return Buffer.from(encoded, 'base64url').toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+function latestTextDraft(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): string | null {
+  return latestDraft(history, TEXT_DRAFT_MARKER)
+}
+
+function latestChangeDraft(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): string | null {
+  return latestDraft(history, CHANGE_DRAFT_MARKER)
+}
+
+function latestDraft(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  marker: string
+): string | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i]
+    if (item.role !== 'assistant') continue
+    const markerIndex = item.content.indexOf(marker)
+    if (markerIndex === -1) {
+      if (item.content.includes('[ROMY_SITE:')) return null
+      continue
+    }
+    const start = markerIndex + marker.length
+    const end = item.content.indexOf(']', start)
+    if (end === -1) return null
+    return decodeDraft(item.content.slice(start, end))
+  }
+  return null
+}
+
+function isTextDraftRequest(text: string): boolean {
+  if (!TEXT_REQUEST_RE.test(text)) return false
+  if (/\b(termin|kalender|calendly|cal\.com|link|button|farbe|schriftart|layout|domain)\b/i.test(text)) {
+    return false
+  }
+  return true
+}
+
+function extractTextTopic(text: string): string {
+  const cleaned = text
+    .replace(/\b(texte?|copy|formulierung(?:en)?|formulier(?:e|en)?|schreib(?:e)?|bessern|verbessern|einfügen|einfuegen|einbauen)\b/gi, ' ')
+    .replace(/\b(z\.?\s*b\.?|zum beispiel|beispielsweise)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return cleaned || text.trim()
+}
+
+function makeTextDraft(text: string): string | null {
+  const topic = extractTextTopic(text)
+  if (topic.length < 8) {
+    return 'Ja, gerne. Schreib mir kurz, worum es gehen soll, dann formuliere ich dir erst einen Vorschlag für den Chat ✨'
+  }
+
+  if (/sommerschule/i.test(text)) {
+    return [
+      'Ich würde es so schreiben:',
+      '',
+      'Diesen Sommer bieten wir eine Sommerschule für Hunde und ihre Menschen an. In entspannter Atmosphäre trainieren wir Alltagssicherheit, Orientierung und ein gutes Miteinander. Das Angebot passt für alle, die die Sommerzeit nutzen möchten, um mit ihrem Hund sicherer, klarer und gelassener zu werden.',
+      '',
+      'Passt das so? Wenn du zustimmst, baue ich den Text auf deine Seite ein ✨',
+    ].join('\n')
+  }
+
+  return [
+    'Ich würde es so schreiben:',
+    '',
+    `${topic.charAt(0).toUpperCase()}${topic.slice(1)} bekommt auf deiner Seite einen klaren, gut verständlichen Bereich. Der Text erklärt kurz, worum es geht, für wen das Angebot passt und warum Interessierte sich bei dir melden sollten.`,
+    '',
+    'Passt das so? Wenn du zustimmst, baue ich den Text auf deine Seite ein ✨',
+  ].join('\n')
+}
+
+function textDraftReply(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): { reply: string; stored: string } | null {
+  const previousDraft = latestTextDraft(history)
+  if (previousDraft && REJECTION_RE.test(text)) {
+    const reply =
+      'Alles gut. Sag mir kurz, was anders klingen soll, zum Beispiel wärmer, kürzer oder konkreter, dann formuliere ich ihn neu ✨'
+    return { reply, stored: reply }
+  }
+
+  if (!isTextDraftRequest(text)) return null
+
+  const reply = makeTextDraft(text)
+  if (!reply) return null
+  const withoutIntro = reply.replace(/^Ich würde es so schreiben:\n\n/, '')
+  const draftBody = withoutIntro.split('\n\nPasst das so?')[0] || withoutIntro
+  const marker = `${TEXT_DRAFT_MARKER}${encodeDraft(draftBody)}]`
+  return { reply, stored: `${reply}\n${marker}` }
+}
+
+function isGenericChangeRequest(text: string): boolean {
+  if (!CHANGE_REQUEST_RE.test(text)) return false
+  if (isTextDraftRequest(text)) return false
+  if (/^\s*(hey|hi|hallo|moin|servus|danke|ja|nein|ok|okay)\b/i.test(text)) return false
+  return text.trim().length >= 8
+}
+
+function changeDraftReply(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): { reply: string; stored: string } | null {
+  const previousDraft = latestChangeDraft(history)
+  if (previousDraft && REJECTION_RE.test(text)) {
+    const reply =
+      'Kein Problem. Sag mir kurz, was ich daran ändern soll, dann passe ich den Vorschlag an ✨'
+    return { reply, stored: reply }
+  }
+
+  if (!isGenericChangeRequest(text)) return null
+
+  const request = text.trim()
+  const reply = [
+    'Ich würde es so umsetzen:',
+    '',
+    request,
+    '',
+    'Passt das so? Wenn du zustimmst, ändere ich es auf deiner Seite 🚀',
+  ].join('\n')
+  const marker = `${CHANGE_DRAFT_MARKER}${encodeDraft(request)}]`
+  return { reply, stored: `${reply}\n${marker}` }
+}
 
 function stripeCheckoutUrl(phone: string): string {
   const url = new URL(STRIPE_URL)
@@ -243,12 +417,97 @@ async function processMessage(message: IncomingMessage) {
           },
         ]
       : history
+  let publicImageUrl: string | undefined
+  if (imageUrl?.startsWith('data:')) {
+    const uploadSlug = existingSite?.slug || `tmp-${phone.replace(/[^a-z0-9]/gi, '-')}`
+    publicImageUrl = await uploadUserChatImage(uploadSlug, imageUrl).catch((err) => {
+      console.error('uploadUserChatImage failed:', err)
+      return undefined
+    })
+  }
   const storedUserMessage = imageUrl
-    ? `[Bild erhalten]${text ? `\n${text}` : ''}`
+    ? `${publicImageUrl ? `[ROMY_USER_IMAGE:${publicImageUrl}]` : '[Bild erhalten]'}${text ? `\n${text}` : ''}`
     : text || '(leer)'
   await appendUserOnly(phone, storedUserMessage).catch((err) =>
     console.error('appendUserOnly failed:', err)
   )
+
+  const approvedTextDraft = latestTextDraft(history)
+  if (approvedTextDraft) {
+    const decision = await classifyDraftResponse(history, text || '', approvedTextDraft)
+    if (decision === 'approve') {
+      text = `Baue diesen freigegebenen Textvorschlag in die Website ein. Ändere nichts anderes unnötig:\n\n${approvedTextDraft}`
+    } else if (decision === 'revise') {
+      const reply =
+        'Verstanden. Sag mir kurz, ob es eher kürzer, wärmer, direkter oder konkreter werden soll, dann formuliere ich den Vorschlag neu ✨'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    } else if (decision === 'reject') {
+      const reply =
+        'Alles gut, dann lasse ich diesen Vorschlag weg. Schreib mir einfach, was stattdessen auf die Seite soll 😊'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    } else if (!isTextDraftRequest(text || '')) {
+      const reply =
+        'Soll ich den Textvorschlag so auf deine Website übernehmen oder möchtest du ihn noch ändern? ✨'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    }
+  }
+
+  if (!approvedTextDraft) {
+    const draft = textDraftReply(text || '', history)
+    if (draft) {
+      await sendWhatsAppMessage(metaFrom, draft.reply)
+      await appendAssistantOnly(phone, draft.stored).catch(() => {})
+      return
+    }
+  }
+
+  const approvedChangeDraft = latestChangeDraft(history)
+  if (approvedChangeDraft) {
+    const decision = await classifyDraftResponse(history, text || '', approvedChangeDraft)
+    if (decision === 'approve') {
+      text = `Setze diesen freigegebenen Änderungswunsch auf der Website um. Ändere nichts anderes unnötig:\n\n${approvedChangeDraft}`
+    } else if (decision === 'revise') {
+      const reply =
+        'Verstanden. Sag mir kurz, was ich am Vorschlag ändern soll, dann passe ich ihn erst im Chat an ✨'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    } else if (decision === 'reject') {
+      const reply =
+        'Okay, dann setze ich diese Änderung nicht um. Schreib mir einfach, was du stattdessen möchtest 😊'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    } else if (!isGenericChangeRequest(text || '')) {
+      const reply =
+        'Soll ich diese Änderung so auf deiner Website umsetzen oder möchtest du noch etwas anpassen? ✨'
+      await sendWhatsAppMessage(metaFrom, reply)
+      await appendAssistantOnly(phone, reply).catch(() => {})
+      return
+    }
+  }
+
+  if (!approvedChangeDraft) {
+    const draft = changeDraftReply(text || '', history)
+    if (draft) {
+      await sendWhatsAppMessage(metaFrom, draft.reply)
+      await appendAssistantOnly(phone, draft.stored).catch(() => {})
+      return
+    }
+  }
+
+  const socialReply = socialAckReply(text || '', history)
+  if (socialReply) {
+    await sendWhatsAppMessage(metaFrom, socialReply)
+    await appendAssistantOnly(phone, socialReply).catch(() => {})
+    return
+  }
 
   // Step 0: explicit image generation / iteration / confirmation.
   // This must run before the website-build classifier, otherwise requests like
@@ -392,8 +651,12 @@ async function processMessage(message: IncomingMessage) {
     return
   }
 
+  // If no new image was sent, check if user recently uploaded one (for deferred placement)
+  const pendingUserImageUrl = !imageUrl ? extractPendingUserImage(history) : undefined
+  const effectiveImageUrl = imageUrl || pendingUserImageUrl
+
   // Step 1: classify intent (cheap Haiku call)
-  const routed = await routeMessage(routedHistory, text || '(leer)', !!imageUrl)
+  const routed = await routeMessage(routedHistory, text || '(leer)', !!effectiveImageUrl)
 
   // Step 2: chat → just send reply, persist, done
   if (routed.intent === 'chat') {
@@ -449,7 +712,7 @@ async function processMessage(message: IncomingMessage) {
   const coderResult = await runRomyCoder({
     slug: site.slug,
     userMessage: text || 'Hallo',
-    imageUrl,
+    imageUrl: effectiveImageUrl,
     history,
     isFirstBuild,
   })
@@ -551,6 +814,18 @@ function stripImageMarkers(text: string): string {
       .replace(/\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED):[^\]]+\]/g, '')
       .trim()
   )
+}
+
+function extractPendingUserImage(history: Array<{ role: string; content: string }>, windowSize = 8): string | undefined {
+  const recent = history.slice(-windowSize)
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const m = recent[i]
+    if (m.role === 'user') {
+      const match = m.content.match(/\[ROMY_USER_IMAGE:([^\]]+)\]/)
+      if (match) return match[1]
+    }
+  }
+  return undefined
 }
 
 async function sendWhatsAppImage(to: string, imageUrl: string, caption?: string) {

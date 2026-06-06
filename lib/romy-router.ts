@@ -18,6 +18,77 @@ function usesClaudeCodeOAuth(): boolean {
   return (process.env.ANTHROPIC_API_KEY || '').startsWith('sk-ant-oat')
 }
 
+export type DraftDecision = 'approve' | 'revise' | 'reject' | 'unclear'
+
+export async function classifyDraftResponse(
+  history: HistoryMsg[],
+  userMessage: string,
+  draftText: string
+): Promise<DraftDecision> {
+  const text = userMessage.trim()
+  if (!text) return 'unclear'
+
+  const obviousReject =
+    /\b(nein|nee|nö|nope|nicht|anders|nochmal|gefällt nicht|gefaellt nicht|passt nicht|falsch|änder|aender|umschreib|umformulieren)\b/i
+  if (obviousReject.test(text)) return 'revise'
+
+  const obviousApprove =
+    /^(ja|jap|jo|yes|okay|ok|passt|passt so|genau|mach|mach das|mach so|nimm das|übernehmen|uebernehmen|einbauen|füge ein|fuege ein|klingt gut|super|perfekt|so ist gut|go|leg los|sieht gut aus|find ich gut|das meine ich)(\s+.*)?[!.]*$/i
+  if (obviousApprove.test(text)) return 'approve'
+
+  const client = anthropicClient()
+  try {
+    const res = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 8,
+      temperature: 0,
+      system: `Du bist ein sehr genauer deutscher Kontext-Classifier für Luna.
+
+Eine Kundin hat gerade einen Vorschlag bekommen. Entscheide, ob ihre neue Antwort bedeutet:
+
+approve = sie stimmt sinngemäß zu und Luna darf den Vorschlag auf der Website umsetzen.
+revise = sie will den Vorschlag ändern, anders formulieren, konkretisieren oder hat Kritik.
+reject = sie lehnt den Vorschlag komplett ab oder will abbrechen.
+unclear = Smalltalk, Dank allein, neue Frage, unklare Antwort oder keine Freigabe.
+
+Wichtig:
+- Es geht NICHT um exakte Keywords. Verstehe sinngemäß und im Kontext.
+- "Danke" allein ist KEINE Freigabe.
+- "Ja danke", "sieht gut aus", "mach ruhig", "kannst du so nehmen" sind Freigaben.
+- Wenn Zweifel bestehen, antworte "unclear", damit Luna erst nachfragt.
+
+Antworte nur mit einem Wort: approve, revise, reject oder unclear.`,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            `Letzte Chat-Historie:\n${history.slice(-8).map((m) => `${m.role}: ${m.content.replace(/\[[^\]]+\]/g, '').slice(0, 400)}`).join('\n')}`,
+            `\nVorschlag:\n${draftText.slice(0, 1200)}`,
+            `\nNeue Antwort der Kundin:\n${text}`,
+          ].join('\n\n'),
+        },
+      ],
+    })
+    const decision = res.content
+      .map((part) => (part.type === 'text' ? part.text : ''))
+      .join('')
+      .trim()
+      .toLowerCase()
+    if (
+      decision === 'approve' ||
+      decision === 'revise' ||
+      decision === 'reject' ||
+      decision === 'unclear'
+    ) {
+      return decision
+    }
+  } catch (err) {
+    console.error('classifyDraftResponse failed:', err)
+  }
+
+  return 'unclear'
+}
+
 function classifyIntentLocally(
   history: HistoryMsg[],
   userMessage: string,
@@ -146,6 +217,7 @@ Entscheide: Will die Kundin konkret etwas AN IHRER WEBSITE ändern/bauen lassen,
 - Design anpassen ("mach es bunter", "andere Farbe", "neue Schriftart")
 - Konkrete Freigabe nach Rückfrage ("ja mach das", "los", "passt", "direkt loslegen")
 - **Bestätigung nach Bild-Generierung:** Wenn Luna gerade Bilder erstellt und gefragt hat "Soll ich mit dem ersten Website-Entwurf beginnen?", und die Kundin bejaht ("ja", "los", "mach", "okay") → BUILD.
+- **Platzierung eines eigenen Fotos:** Wenn in der History ein [ROMY_USER_IMAGE:...]-Marker steht und die Kundin jetzt sagt wo das Bild hin soll ("in den Hero", "in die Galerie", "oben", "als Hintergrundbild", "da rein", "pack es rein", "ja genau", "mach das") → BUILD.
 
 Wichtig: Eine reine URL ohne Bau-Absicht ist CHAT (wir analysieren Links nicht aktiv im ersten Build).
 
@@ -157,7 +229,7 @@ Wichtig: Eine reine URL ohne Bau-Absicht ist CHAT (wir analysieren Links nicht a
 - Fragen/Aussagen zu eigener Domain ("meine Domain ist xy.de", "kann ich meine Domain nutzen") — eigene Domain läuft aktuell noch über ein Teammitglied, Subdomain sofort nutzbar
 - Anfragen nach Features, die wir nicht haben (Online-Shop mit Warenkorb, Buchungssystem, mehrsprachige Seiten, Newsletter etc.)
 - Unklare Anfragen ohne konkreten Website-Bezug
-- Fotos ohne klare Anweisung (die Fotos-Flow ist woanders)
+- Fotos ohne klare Anweisung OHNE vorherigen [ROMY_USER_IMAGE]-Marker in der History (die Fotos-Flow ist woanders)
 
 Bei Unsicherheit → CHAT (günstiger, User kann im Zweifel noch konkret werden).
 
@@ -299,7 +371,12 @@ Wenn sie fragt was es kostet: derzeit in Beta, probier's einfach aus.
 
 **Beschwerden, technische Fehler, oder Fragen die du nicht beantworten kannst:** Sag ruhig und kurz: "Tut mir leid, ich leite das an mein Team weiter, jemand meldet sich in Kürze bei dir." Keine Links, keine Termine vorschlagen, das Team meldet sich direkt. Versuche nicht, das Problem selbst zu lösen, wenn du unsicher bist.
 
-Wenn sie ein Foto schickt ohne klare Anweisung: frag freundlich nach, was du damit tun sollst (auf die Website packen, ersetzen, bearbeiten).`
+**Wenn die Kundin ein Foto schickt (erkennbar am [ROMY_USER_IMAGE:...]-Marker in ihrer Nachricht oder am Hinweis "[Die Kundin hat ein Bild mitgeschickt.]"):**
+Mach zuerst ein kurzes, echtes Kompliment zum Foto — natürlich und situationsgerecht (nicht immer dasselbe). Dann frag freundlich und konkret, wo genau das Bild auf der Website platziert werden soll — z.B. als Hero-Bild, im Über-uns-Bereich, in einer Galerie, als Logo oder Hintergrundbild. Formuliere das locker und offen, passend zum bisherigen Gesprächsverlauf.
+
+Wenn aus dem Kontext bereits klar ist, wo das Bild hingehört (z.B. Kundin hat vorher nach einem Hero gefragt), dann bestätige kurz dass du es einbauen wirst — keine zusätzliche Nachfrage nötig.
+
+Wenn die Kundin sagt, wo das Bild hin soll (Hero, Galerie, Über-uns etc.) und es bereits ein [ROMY_USER_IMAGE:...] in der Geschichte gibt: Bestätige kurz ("Perfekt, ich baue es gleich ein! 🖼️") — das System kümmert sich dann automatisch um den Einbau.`
 
 export interface RouterResult {
   intent: 'build' | 'chat'

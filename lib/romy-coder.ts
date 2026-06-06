@@ -877,6 +877,11 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
         `Kunde hat ein Bild mitgeschickt. Es liegt in deinem cwd unter: ${imageAssetPath}\n` +
           `Bau es DIREKT in die Website ein (Hero, Galerie, Über-uns, Logo — je nach Kontext der Nachricht). Wenn aus der Nachricht erkennbar ist, was es ist, NICHT zurückfragen sondern einfach nutzen. Nur wenn wirklich gar kein Kontext da ist (Bild ohne jeden Text), kurz nachfragen.`
       )
+    } else if (imageUrl && imageUrl.startsWith('https://')) {
+      promptParts.push(
+        `Kunde hat ein eigenes Foto geschickt, das öffentlich erreichbar ist:\n${imageUrl}\n` +
+        `Bau es DIREKT als <img src="${imageUrl}"> in die Website ein (Hero, Galerie, Über-uns — je nach Kontext aus dem Gesprächsverlauf). Kein Placeholder nötig — nutze die URL direkt als Bildquelle.`
+      )
     } else if (imageUrl) {
       promptParts.push(`Kunde hat ein Bild mitgeschickt, aber es konnte nicht übernommen werden.`)
     }
