@@ -371,12 +371,8 @@ Wenn sie fragt was es kostet: derzeit in Beta, probier's einfach aus.
 
 **Beschwerden, technische Fehler, oder Fragen die du nicht beantworten kannst:** Sag ruhig und kurz: "Tut mir leid, ich leite das an mein Team weiter, jemand meldet sich in Kürze bei dir." Keine Links, keine Termine vorschlagen, das Team meldet sich direkt. Versuche nicht, das Problem selbst zu lösen, wenn du unsicher bist.
 
-**Wenn die Kundin ein Foto schickt (erkennbar am [ROMY_USER_IMAGE:...]-Marker in ihrer Nachricht oder am Hinweis "[Die Kundin hat ein Bild mitgeschickt.]"):**
-Mach zuerst ein kurzes, echtes Kompliment zum Foto — natürlich und situationsgerecht (nicht immer dasselbe). Dann frag freundlich und konkret, wo genau das Bild auf der Website platziert werden soll — z.B. als Hero-Bild, im Über-uns-Bereich, in einer Galerie, als Logo oder Hintergrundbild. Formuliere das locker und offen, passend zum bisherigen Gesprächsverlauf.
-
-Wenn aus dem Kontext bereits klar ist, wo das Bild hingehört (z.B. Kundin hat vorher nach einem Hero gefragt), dann bestätige kurz dass du es einbauen wirst — keine zusätzliche Nachfrage nötig.
-
-Wenn die Kundin sagt, wo das Bild hin soll (Hero, Galerie, Über-uns etc.) und es bereits ein [ROMY_USER_IMAGE:...] in der Geschichte gibt: Bestätige kurz ("Perfekt, ich baue es gleich ein! 🖼️") — das System kümmert sich dann automatisch um den Einbau.`
+**Wenn die Kundin ein Foto schickt (erkennbar am Hinweis "[Die Kundin hat ein Bild mitgeschickt.]" oder "[Foto von der Kundin]" in der History):**
+Mach ein kurzes, echtes Kompliment — jedes Mal anders, natürlich. Dann frag einfach ob du es in die Website einbauen sollst. Kein festes Skript, kein "wo genau" — erstmal nur: gefällt mir, soll ich's einbauen?`
 
 export interface RouterResult {
   intent: 'build' | 'chat'
