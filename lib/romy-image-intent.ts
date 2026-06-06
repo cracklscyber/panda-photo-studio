@@ -51,11 +51,12 @@ const ITERATION_TRIGGERS: RegExp[] = [
 ]
 
 const CONFIRM_TRIGGERS: RegExp[] = [
-  /\b(perfekt|passt|super|ja\s+gut|gefällt mir|behalten|nimm das|nimm es|das ist es|ja\s+das|so ist es gut)\b/i,
+  /\b(perfekt|passt|super|ja\s+gut|gefällt mir|behalten|nimm das|nimm es|nimm deinen vorschlag|nimm den vorschlag|das ist es|ja\s+das|so ist es gut)\b/i,
   /^\s*(ja|jo|jep|jap|okay|ok)\s*[.!?]*\s*$/i,
   /\b(füg|einbau|einfüg|hinzufüg|add|insert|nehm|übernehm)[a-zäöüß]*\s*(es|das|bild|foto)?\s*(ein|hinzu|in die|zur)?\b/i,
   /\b(in die|auf die|zur)\s*(website|seite|web)/i,
-  /\b(bitte\s+)?(einbauen|einfügen|hinzufügen|integrieren|verwenden|benutzen|nutzen)\b/i,
+  /\b(bitte\s+)?(einbauen|einfügen|hinzufügen|integrieren|verwenden|verwende|benutzen|benutze|nutzen|nutze|nutz)\b/i,
+  /\b(ok|okay|ja)?\s*(benutze|nutze|nutz|verwende|nimm)\s+(das|es|den|deinen|deinen vorschlag|vorschlag|bild|foto)\b/i,
 ]
 
 const CANCEL_TRIGGERS: RegExp[] = [
@@ -77,15 +78,28 @@ export type ImageIntent =
   | { kind: 'none' }
 
 /** True when the user's request is just a trigger phrase with no actual description.
- *  In that case the caller should ask what to generate instead of guessing. */
+ *  In that case the caller should ask what to generate instead of guessing.
+ *  HARD RULE: if no concrete subject/scene remains after stripping all meta-words,
+ *  always ask. Better to ask once too often than to generate random images. */
 export function needsImagePrompt(rawPrompt: string): boolean {
   const stripped = rawPrompt
     .toLowerCase()
-    .replace(/\b(kannst|könntest|du|mir|mal|noch|weitere?|neue?s?|ein|nen|mach|erstell|generier|kreier|erzeug|bitte|doch|eben|paar|bilder?|fotos?|grafiken?|ai[\s-]?bild|ki[\s-]?bild|ja|okay|ok|gerne|auch|einfach|ein paar)\b/g, ' ')
-    .replace(/[?!.,]+/g, ' ')
+    // All trigger/meta verbs (conjugated)
+    .replace(/\b(generier\w*|erstell\w*|mach\w*|erzeug\w*|kreier\w*|schick\w*|send\w*|zeig\w*|gib|geben|haben|hätte\w*|möchte\w*|brauche?\w*|will|woll\w*|könn\w*|kann\w*|würd\w*|wär\w*)\b/g, ' ')
+    // Pronouns, articles, names
+    .replace(/\b(ich|du|sie|er|es|wir|ihr|luna|hallo|hi|hey|mir|mich|mein\w*|dein\w*|ein\w*|nen|kein\w*|den|dem|die|das|der|des)\b/g, ' ')
+    // Filler / adverbs
+    .replace(/\b(bitte|danke|mal|noch|auch|einfach|schnell|kurz|nochmal\w*|vielleicht|doch|eben|erst|gerne|okay|ok|ja|nein|bitte|doch|paar|weitere?|neue?s?|extra|mehr|wenig\w*|etwas|so|sehr|bitte)\b/g, ' ')
+    // Image-related nouns (they describe the ACT not the subject)
+    .replace(/\b(bild\w*|foto\w*|grafik\w*|image\w*|picture\w*|photo\w*|ai[\s-]?bild|ki[\s-]?bild|illustration\w*|vorschlag\w*|entwurf\w*)\b/g, ' ')
+    // Prepositions / conjunctions
+    .replace(/\b(für|von|mit|aus|auf|an|in|zu|bei|nach|über|unter|zwischen|und|oder|aber|weil|da|als|wie|wenn|ob)\b/g, ' ')
+    .replace(/[?!.,;:]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  return stripped.length < 10
+
+  // Needs at least 12 chars of real content (a subject/scene description)
+  return stripped.length < 12
 }
 
 export function detectImageIntent(
@@ -131,7 +145,10 @@ export function detectImageIntent(
   // an image generation request.
   const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')
   if (lastAssistant) {
-    const promptedForDesc = /welches Motiv|welche Richtung|was (für|möchtest) du (sehen|als Bild)|sag mir.*Motiv|beschreib.*Bild/i.test(lastAssistant.content)
+    const promptedForDesc =
+      /welches Motiv|welche Richtung|Motiv oder welche Richtung|wenn es um Bilder geht|was (für|möchtest) du (sehen|als Bild)|sag mir.*Motiv|beschreib.*Bild|beschreib.*vorstell/i.test(
+        lastAssistant.content
+      )
     if (promptedForDesc && text.length > 8) {
       return { kind: 'generate', rawPrompt: text }
     }

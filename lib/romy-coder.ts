@@ -65,6 +65,7 @@ Du bekommst Branche und ggf. Stilwunsch — daraus baust du selbständig mit gut
 - Farben: Nagelstudio/Beauty → Rosé/Beige/Creme + Serif. Friseur → warme Erdtöne oder modern S/W. Café/Bäckerei → warme Brauntöne. Handwerk → bodenständig. Restaurant → küchenpassend. Default: minimalistisch modern.
 - Standardabschnitte: Hero (Name + Tagline), Über uns (2-3 Platzhalter-Sätze), Leistungen/Angebot (3-5 typische Services), Öffnungszeiten (Platzhalter "Mo-Fr 9-18 Uhr (anpassen)"), Kontakt (Platzhalter).
 - Texte: gepflegtes Deutsch, keine Lorem-Ipsum. Erfinde keine konkreten Preise, Öffnungszeiten, Adressen — Platzhalter mit Hinweis "(anpassen)" sind okay.
+- NIEMALS lange Gedankenstriche (—) im Website-Text verwenden. Nutze stattdessen Komma, Punkt oder Klammern. Auch keine doppelten Bindestriche (--).
 
 Erst NACH dem Build darfst du nach konkreten Infos oder Fotos fragen.
 
@@ -86,7 +87,8 @@ Verbindliche Defaults:
 - Vertikaler Whitespace zwischen Sections: 80-120px Mobile, 120-180px Desktop.
 - Typografie: Default Sans (Inter, DM Sans oder Manrope). Premium-Branchen (Florist, Boutique, Coach, Studio, Wellness): Serif-Headline (Playfair Display oder Cormorant Garamond) + Sans-Body. Headlines clamp(2.5rem, 6vw, 4.5rem), line-height 1.1, weight 600-700. Body 16-18px, line-height 1.6-1.8, max-width 65ch.
 - Hero: IMMER full-bleed Hintergrundbild 90-100vh mit dunklem Overlay (z.B. linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.5))), kurze Headline (3-7 Wörter), ein Satz Sub-Tagline, EINE konkrete CTA (Outline-Button oder Text-Link mit Pfeil). Sehr empfehlenswert: subtiler Ken-Burns-Zoom auf dem Hero-Bild, oder Auto-Fade-Slideshow wenn 2+ Bilder passen.
-- Hero-Komposition: Text darf NIEMALS direkt auf dem wichtigsten Motiv liegen (Gesicht, Produkt, Auto, Essen, Blumen, Hund, Werkzeug, Logo, Ladenfront). Lege eine klare Text-Safe-Zone an: z.B. Text links auf ruhiger dunkler Fläche und Motiv rechts, oder Text in einem halbtransparenten/soliden ruhigen Panel, oder Bild per object-position so setzen, dass das Hauptmotiv frei bleibt. Prüfe gedanklich Desktop UND Mobile: Headline, CTA und Navigation dürfen das Hauptmotiv nicht verdecken. Wenn das Bild kein ruhiges freies Drittel hat, nutze Split-Hero (Textblock + Bild) statt Text direkt auf dem Foto.
+- Hero-Komposition: Text darf NIEMALS direkt auf dem wichtigsten Motiv liegen (Gesicht, Kopf, Körper, Produkt, Auto, Essen, Blumen, Hund, Werkzeug, Logo, Ladenfront). Behandle jedes Hero-Bild wie ein Foto mit Schutzbereich: Motiv zuerst, Text danach. Bevor du CSS schreibst, entscheide gedanklich: Wo ist der visuelle Fokus? Wo ist ruhiger negativer Raum? Der Text darf nur in diese ruhige Safe-Zone. Erlaubte Lösungen: Text links auf ruhiger dunkler Fläche und Motiv rechts, Text in einem bewusst gestalteten halbtransparenten/soliden Panel, Split-Hero mit Textblock neben dem Bild, oder object-position/object-fit so setzen, dass das Hauptmotiv frei bleibt. Verboten: Headline groß über Gesicht/Hund/Produkt/Auto legen und nur mit dunklem Overlay kaschieren. Prüfe Desktop UND Mobile: Headline, CTA und Navigation dürfen das Hauptmotiv nicht verdecken. Wenn das Bild kein ruhiges freies Drittel hat, nutze Split-Hero statt Text direkt auf dem Foto.
+- Hero-Fokus-Check vor Abschluss: Wenn im Hero eine Person, ein Tier, ein Fahrzeug, ein Produkt oder Essen sichtbar ist, muss im CSS erkennbar sein, dass du es schützt: z.B. mit .hero-media img { object-position: center right; }, .hero-copy als Panel, grid/split layout, oder seitlichem Gradient nur hinter dem Text. Ein vollflächiges Hintergrundbild mit zentriertem object-position und riesiger Headline darüber ist nur erlaubt, wenn das Bild wirklich ruhigen freien Raum hat.
 - Hero-Lesbarkeit: Nutze nicht einfach ein gleichmäßiges dunkles Overlay über dem ganzen Bild. Besser: seitlicher Gradient nur hinter dem Text, dezente Vignette, klarer max-width-Textblock. Der Textblock soll wie bewusst komponiert wirken, nicht wie zufällig auf ein Foto gelegt.
 - Branchenfarben: Autohaus/Fahrzeughandel wirkt am besten mit dunklem Anthrazit, warmem Off-White, Silber/Grau und einer sehr zurückhaltenden Akzentfarbe (z.B. kühles Blau oder Champagner). Kein schweres Gold/Senf als dominante Farbe, kein Beauty-/Luxus-Parfüm-Look. Obsthof/Hofladen → Naturgrün/Creme/Holz. Hundeschule → Naturgrün/Sand. Werkstatt → Anthrazit/Stahl/Blau.
 - Bewegung: Hover-Zoom auf Galerie-/Service-Bildern, dezente IntersectionObserver-basierte Scroll-Reveal-Fades auf Sections. Subtil, nicht ablenkend.
@@ -881,8 +883,9 @@ export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResu
     if (confirmedImageUrls.length > 0) {
       const list = confirmedImageUrls.map((u, i) => `${i + 1}. ${u}`).join('\n')
       promptParts.push(
-        `Vom Kunden bestätigte, individuell generierte Bilder (URLs sind öffentlich erreichbar — direkt als <img src="..."> einbauen, NICHT herunterladen):\n${list}\n` +
-          `Nutze diese statt Unsplash-Stock-Bildern. Das erste Bild eignet sich meist als Hero, weitere als Galerie. Wenn nur ein Bild da ist, setze es als Hero.`
+          `Vom Kunden bestätigte, individuell generierte Bilder (URLs sind öffentlich erreichbar — direkt als <img src="..."> einbauen, NICHT herunterladen):\n${list}\n` +
+          `Nutze diese statt Unsplash-Stock-Bildern. Das erste Bild eignet sich meist als Hero, weitere als Galerie. Wenn nur ein Bild da ist, setze es als Hero.\n` +
+          `WICHTIG FÜR HERO MIT DIESEM BILD: Lege Text nicht blind über das Bild. Wenn darauf eine Person, ein Gesicht, ein Hund, ein Produkt, ein Auto oder ein anderer klarer Fokus zu sehen ist, schütze diesen Bereich. Nutze einen Split-Hero, ein Text-Panel neben/über ruhigem Bildbereich oder object-position so, dass das Motiv frei bleibt. Auf Mobile darf die Headline ebenfalls nicht über Gesicht, Hund, Produkt oder Hauptmotiv liegen.`
       )
     }
 

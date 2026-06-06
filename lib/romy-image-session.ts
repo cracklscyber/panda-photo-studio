@@ -14,11 +14,9 @@
 // effectively a stable token only the backend reads. (No UI changes needed.)
 
 import { generateImage } from './gemini-images'
-import { getOrCreateSite } from './romy-sites'
+import { findSiteByPhone } from './romy-sites'
 import { IMAGE_DRAFT_MARKER, IMAGE_CONFIRMED_MARKER, extractLatestDraftUrl, extractDraftPromptContext } from './romy-image-intent'
 import type { ChatMessage } from './romy-chat'
-
-const MAX_IMAGES_PER_SESSION = 6
 
 export interface ImageActionResult {
   reply: string
@@ -60,39 +58,22 @@ function composeGeminiPrompt(rawUserPrompt: string, isIteration: boolean, histor
   return `${ctx}. ${rawUserPrompt}. Photo-realistic, high detail, no text in image, no watermark.`
 }
 
-async function countSessionImages(history: ChatMessage[]): Promise<number> {
-  let count = 0
-  for (const m of history) {
-    if (m.role !== 'assistant') continue
-    const drafts = m.content.match(/\[ROMY_IMAGE_DRAFT:/g)
-    const confirms = m.content.match(/\[ROMY_IMAGE_CONFIRMED:/g)
-    count += (drafts?.length || 0) + (confirms?.length || 0)
-  }
-  return count
-}
-
 export async function generateDraftImage(opts: {
   sessionKey: string
   userMessage: string
   history: ChatMessage[]
   isIteration: boolean
 }): Promise<ImageActionResult> {
-  const sessionImages = await countSessionImages(opts.history)
-  if (sessionImages >= MAX_IMAGES_PER_SESSION) {
-    return {
-      reply: 'Wir haben jetzt einige Bilder ausprobiert, ich speichere die Variante hier so wie sie ist. Falls du sie tauschen willst, sag Bescheid wenn die Seite steht.',
-      status: 'limit',
-    }
-  }
-
-  const site = await getOrCreateSite(opts.sessionKey, opts.userMessage)
+  const site = await findSiteByPhone(opts.sessionKey).catch(() => null)
+  const fallbackSlug = `image-${opts.sessionKey.replace(/\D/g, '').slice(-8) || 'session'}`
+  const storageSlug = site?.slug || fallbackSlug
   const prompt = composeGeminiPrompt(opts.userMessage, opts.isIteration, opts.history)
   const aspect = deriveAspect(opts.userMessage)
   const filename = timestampedFilename()
 
   try {
     const img = await generateImage({
-      slug: site.slug,
+      slug: storageSlug,
       prompt,
       aspect,
       filename,
@@ -122,7 +103,7 @@ export function confirmDraftImage(history: ChatMessage[]): ImageActionResult {
     }
   }
   return {
-    reply: `Perfekt! 🔨 Ich baue das Bild jetzt in deine Seite ein.\n\n${IMAGE_CONFIRMED_MARKER}${url}]`,
+    reply: `Perfekt, ich merke mir dieses Bild für deine Seite.\n\n${IMAGE_CONFIRMED_MARKER}${url}]`,
     url,
     status: 'confirmed',
   }

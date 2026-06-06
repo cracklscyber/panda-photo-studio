@@ -49,11 +49,11 @@ export const RemotionRoot: React.FC = () => {
         height={1920}
       />
 
-      {/* Chat Ad: WhatsApp conversation, 4:5 format, ~5 sec */}
+      {/* Chat Ad: WhatsApp conversation, 4:5 Meta feed format */}
       <Composition
         id="ChatAdSlide"
         component={ChatAdSlide}
-        durationInFrames={160}
+        durationInFrames={185}
         fps={30}
         width={1080}
         height={1350}
@@ -63,7 +63,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="HeroSlide"
         component={HeroSlide}
-        durationInFrames={472}
+        durationInFrames={450}
         fps={30}
         width={1080}
         height={1350}

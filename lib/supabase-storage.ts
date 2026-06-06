@@ -28,6 +28,15 @@ export function sitePreviewUrl(slug: string, path = 'index.html'): string {
   return sitePublicUrl(slug, path)
 }
 
+export function sitePathPreviewUrl(slug: string, path = 'index.html'): string {
+  const apex = (process.env.ROMY_APEX_DOMAIN || 'halloluna.net')
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+  const suffix = path && path !== 'index.html' ? `/${path}` : ''
+  return `https://${apex}/site/${slug}${suffix}`
+}
+
 const LIST_PAGE = 100
 
 type RawEntry = {

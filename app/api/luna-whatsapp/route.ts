@@ -20,8 +20,9 @@ import {
 } from '@/lib/romy-sites'
 import { loadHistory, appendAssistantOnly, appendUserOnly } from '@/lib/romy-chat'
 import { logBuild } from '@/lib/romy-costs'
-import { downloadSiteFile, sitePreviewUrl } from '@/lib/supabase-storage'
+import { downloadSiteFile, sitePathPreviewUrl, sitePreviewUrl } from '@/lib/supabase-storage'
 import { transcribeAudio } from '@/lib/gemini-audio'
+import { ensureVercelSubdomain } from '@/lib/vercel-domains'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -53,6 +54,27 @@ function buildLimitFallbackMessage(phone: string): string {
     `Direkt starten: ${stripeCheckoutUrl(phone)}`,
     `Termin buchen: ${CAL_URL}`,
   ].join('\n')
+}
+
+async function getSafePreviewUrl(slug: string): Promise<string> {
+  const subdomainUrl = sitePreviewUrl(slug)
+  const ensured = await ensureVercelSubdomain(slug)
+  if (ensured) {
+    try {
+      const res = await fetch(subdomainUrl, {
+        method: 'HEAD',
+        cache: 'no-store',
+      })
+      if (res.ok) return subdomainUrl
+      console.warn(`Preview subdomain check failed for slug "${slug}": ${res.status}`)
+    } catch (err) {
+      console.warn(`Preview subdomain DNS/request failed for slug "${slug}":`, err)
+    }
+  } else {
+    console.warn(`Preview subdomain not ensured for slug "${slug}"`)
+  }
+  console.warn(`Using path preview for slug "${slug}"`)
+  return sitePathPreviewUrl(slug)
 }
 
 function verifyMetaSignature(
@@ -252,6 +274,7 @@ async function processMessage(message: IncomingMessage) {
       kind: imageIntent.kind,
       featureEnabled: imageFeatureEnabled(),
     })
+
     if (!imageFeatureEnabled()) {
       const reply =
         'Die Bildgenerierung ist gerade nicht aktiv. Ich leite das ans Team weiter, damit die Bilder manuell erstellt oder die Funktion wieder aktiviert wird. Deine Website fasse ich dadurch nicht ungefragt an.'
@@ -278,7 +301,7 @@ async function processMessage(message: IncomingMessage) {
       imageIntent.kind === 'generate' &&
       needsImagePrompt(imageIntent.rawPrompt)
     ) {
-      const askReply = 'Was für ein Bild soll ich generieren? Beschreib mir kurz, was du dir vorstellst.'
+      const askReply = 'Welches Motiv soll es sein? Beschreib mir kurz, was du dir vorstellst.'
       await sendWhatsAppMessage(metaFrom, askReply)
       await appendAssistantOnly(phone, askReply).catch(() => {})
       return
@@ -337,7 +360,7 @@ async function processMessage(message: IncomingMessage) {
         if (coderResult2.ok) {
           if (coderResult2.sandbox_id) await updateSiteSandboxId(phone, coderResult2.sandbox_id).catch(() => {})
           await incrementBuildCount(phone).catch(() => {})
-          const previewUrl = sitePreviewUrl(site2.slug)
+          const previewUrl = await getSafePreviewUrl(site2.slug)
           const body2 = (coderResult2.reply || 'Fertig! 🎉').trim()
           await sendWhatsAppCTA(metaFrom, `${body2}\n\n${previewUrl}`, 'Website öffnen', previewUrl).catch(async () => {
             await sendWhatsAppMessage(metaFrom, `${body2}\n\n${previewUrl}`)
@@ -348,6 +371,23 @@ async function processMessage(message: IncomingMessage) {
           await sendWhatsAppMessage(metaFrom, failReply)
           await appendAssistantOnly(phone, failReply).catch(() => {})
         }
+      } else {
+        const limitMessage = buildLimitMessage()
+        await sendLimitUpsell(metaFrom, phone, limitMessage).catch(async (err) => {
+          console.error('limit upsell send failed after image confirm:', err)
+          await sendWhatsAppMessage(metaFrom, buildLimitFallbackMessage(phone)).catch((fallbackErr) =>
+            console.error('limit fallback send failed after image confirm:', fallbackErr)
+          )
+        })
+        if (!site2.callback_requested_at) {
+          await markCallbackRequested(phone).catch((err) =>
+            console.error('markCallbackRequested after image confirm failed:', err)
+          )
+        }
+        await appendAssistantOnly(
+          phone,
+          `${limitMessage}\n[ROMY_PAYMENT:${stripeCheckoutUrl(phone)}]\n[ROMY_CALENDAR:${CAL_URL}]`
+        ).catch(() => {})
       }
       return
     }
@@ -451,7 +491,7 @@ async function processMessage(message: IncomingMessage) {
       console.error('incrementBuildCount failed:', err)
     )
     const body = (coderResult.reply || 'Fertig!').trim()
-    const previewUrl = sitePreviewUrl(site.slug)
+    const previewUrl = await getSafePreviewUrl(site.slug)
     const sent = await sendWhatsAppCTA(
       metaFrom,
       body,

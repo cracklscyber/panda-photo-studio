@@ -150,6 +150,17 @@ export async function findSiteByDomain(domain: string): Promise<RomySite | null>
   return (data as RomySite) || null
 }
 
+function isPlaceholderSlug(slug: string, phone: string): boolean {
+  const digits = phone.replace(/\D/g, '')
+  const tail = digits.slice(-8)
+  return (
+    slug === 'kunde' ||
+    slug.startsWith('kunde-') ||
+    slug === tail ||
+    slug === `image-${tail}`
+  )
+}
+
 async function extractBusinessName(context: string): Promise<string | null> {
   const url = extractFirstUrl(context)
   if (url) {
@@ -189,8 +200,6 @@ export async function getOrCreateSite(
   history: { role: string; content: string }[] = []
 ): Promise<RomySite> {
   const existing = await findSiteByPhone(phone)
-  if (existing) return existing
-
   // Ganze History als Kontext mitgeben damit der Firmenname auch dann
   // erkannt wird wenn die aktuelle Nachricht nur "ja" oder "mach los" ist.
   const context = history
@@ -198,6 +207,32 @@ export async function getOrCreateSite(
     .map((m) => m.content)
     .concat(userMessage)
     .join('\n')
+
+  if (existing) {
+    if (
+      !existing.business_name &&
+      !existing.last_sandbox_id &&
+      isPlaceholderSlug(existing.slug, phone)
+    ) {
+      const businessName = await extractBusinessName(context)
+      if (businessName) {
+        const slug = await uniquifySlug(businessName)
+        const { data, error } = await sb()
+          .from('romy_sites')
+          .update({
+            slug,
+            business_name: businessName,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('phone', phone)
+          .select('*')
+          .single()
+        if (!error && data) return data as RomySite
+      }
+    }
+    return existing
+  }
+
   const businessName = await extractBusinessName(context)
   const slugBase = businessName || 'kunde'
   const slug = await uniquifySlug(slugBase)

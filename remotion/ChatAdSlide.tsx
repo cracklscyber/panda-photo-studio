@@ -40,8 +40,7 @@ function fadeIn(frame: number, a: number, b: number): React.CSSProperties {
 function bubbleIn(frame: number, startF: number): React.CSSProperties {
   const t = frame - startF;
   return {
-    opacity:   interpolate(t, [0, 22], [0, 1], { ...cl, easing: Easing.out(Easing.quad) }),
-    transform: `translateY(${interpolate(t, [0, 28], [32, 0], { ...cl, easing: Easing.out(Easing.cubic) })}px)`,
+    opacity: interpolate(t, [0, 50], [0, 1], { ...cl, easing: Easing.out(Easing.cubic) }),
   };
 }
 
@@ -92,8 +91,8 @@ const Bubble: React.FC<BubbleProps> = ({ side, text, time, ticks, style }) => {
       justifyContent: isUser ? "flex-end" : "flex-start",
       alignItems: "flex-end",
       gap: 10,
-      paddingLeft:  isUser ? PAD_H * 1.5 : PAD_H,
-      paddingRight: isUser ? PAD_H       : PAD_H * 1.5,
+      paddingLeft:  isUser ? PAD_H * 0.5 : PAD_H * 0.9,
+      paddingRight: isUser ? PAD_H * 2.0 : PAD_H * 0.5,
       ...style,
     }}>
       {/* Luna avatar — left side */}
@@ -119,13 +118,13 @@ const Bubble: React.FC<BubbleProps> = ({ side, text, time, ticks, style }) => {
         border: isUser
           ? "1px solid rgba(60,200,110,0.18)"
           : "1px solid rgba(80,110,180,0.18)",
-        padding: "24px 28px 16px 28px",
-        maxWidth: 700,
+        padding: "16px 20px 10px 20px",
+        maxWidth: 660,
       }}>
         {/* Text */}
         <p style={{
-          fontFamily, fontWeight: 700, fontSize: 34,
-          color: "#fff", lineHeight: 1.45, margin: 0, marginBottom: 12,
+          fontFamily, fontWeight: 700, fontSize: 31,
+          color: "#fff", lineHeight: 1.45, margin: 0, marginBottom: 6,
         }}>
           {text}
         </p>
@@ -134,7 +133,7 @@ const Bubble: React.FC<BubbleProps> = ({ side, text, time, ticks, style }) => {
         <div style={{
           display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 5,
         }}>
-          <span style={{ fontFamily, fontWeight: 400, fontSize: 24, color: "rgba(255,255,255,0.42)" }}>
+          <span style={{ fontFamily, fontWeight: 400, fontSize: 20, color: "rgba(255,255,255,0.42)" }}>
             {time}
           </span>
           {ticks && (
@@ -160,32 +159,24 @@ export const ChatAdSlide: React.FC = () => {
 
       {/* ── Headline ── */}
       <div style={{
-        position: "absolute", top: 80, left: PAD_H, right: PAD_H,
+        position: "absolute", top: 72, left: PAD_H, right: PAD_H,
       }}>
-        {/* Line 1 */}
         <div style={{
-          fontFamily, fontWeight: 800, fontSize: 92,
+          fontFamily, fontWeight: 800, fontSize: 82,
           color: "#fff", lineHeight: 1.05, letterSpacing: "-2px",
-          ...fadeUp(frame, 2, 20),
         }}>
           Website erstellen.
         </div>
-
-        {/* Line 2 */}
         <div style={{
-          fontFamily, fontWeight: 800, fontSize: 92,
+          fontFamily, fontWeight: 800, fontSize: 82,
           color: "#fff", lineHeight: 1.05, letterSpacing: "-2px",
-          ...fadeUp(frame, 10, 28),
         }}>
           Einfach per <span style={{ color: GREEN }}>WhatsApp.</span>
         </div>
-
-        {/* Subline */}
         <p style={{
-          fontFamily, fontWeight: 400, fontSize: 28,
-          color: "rgba(255,255,255,0.55)", margin: "14px 0 0",
+          fontFamily, fontWeight: 400, fontSize: 26,
+          color: "rgba(255,255,255,0.55)", margin: "12px 0 0",
           letterSpacing: "0.01em",
-          ...fadeIn(frame, 20, 34),
         }}>
           Deine KI-Assistentin für lokale Unternehmen.
         </p>
@@ -193,42 +184,42 @@ export const ChatAdSlide: React.FC = () => {
 
       {/* ── Chat bubbles ── */}
       <div style={{
-        position: "absolute", top: 510, left: 0, right: 0,
-        display: "flex", flexDirection: "column", gap: 22,
+        position: "absolute", top: 420, left: 0, right: 0,
+        display: "flex", flexDirection: "column", gap: 28,
       }}>
-        <Sequence from={32} layout="none">
+        <Sequence from={28} layout="none">
           <Bubble
             side="user"
             text="Hey Luna 👋 Ich brauche eine Website für mein Yogastudio. Bilder schicke ich dir gleich."
             time="09:41"
             ticks="single"
-            style={bubbleIn(frame, 0)}
+            style={bubbleIn(frame, 28)}
           />
         </Sequence>
 
-        <Sequence from={64} layout="none">
+        <Sequence from={70} layout="none">
           <Bubble
             side="luna"
-            text="Klar, mache ich für dich! Erzähl mir etwas über dich und dein Studio – hast du schon konkrete Design-Vorstellungen?"
+            text="Klar! Erzähl mir etwas über dein Studio. Hast du Design-Vorstellungen?"
             time="09:41"
-            style={bubbleIn(frame, 0)}
+            style={bubbleIn(frame, 70)}
           />
         </Sequence>
 
-        <Sequence from={98} layout="none">
+        <Sequence from={114} layout="none">
           <Bubble
             side="user"
             text="München, Vinyasa & Yin. Ruhig, viel Weißraum – Buchung direkt auf der Seite!"
             time="09:42"
             ticks="double"
-            style={bubbleIn(frame, 0)}
+            style={bubbleIn(frame, 114)}
           />
         </Sequence>
       </div>
 
       {/* ── Footer: Luna.ai ── */}
       <div style={{
-        position: "absolute", bottom: 52, left: PAD_H,
+        position: "absolute", bottom: 56, left: PAD_H,
         display: "flex", alignItems: "center", gap: 12,
         ...fadeIn(frame, 120, 138),
       }}>
@@ -237,11 +228,11 @@ export const ChatAdSlide: React.FC = () => {
           boxShadow: `0 0 10px ${GREEN}`,
         }} />
         <span style={{
-          fontFamily, fontWeight: 800, fontSize: 44,
+          fontFamily, fontWeight: 800, fontSize: 52,
           letterSpacing: "-0.5px",
         }}>
           <span style={{ color: "#fff" }}>Luna</span>
-          <span style={{ color: GREEN }}>.ai</span>
+          <span style={{ color: "rgba(255,255,255,0.45)" }}>.ai</span>
         </span>
       </div>
     </AbsoluteFill>
