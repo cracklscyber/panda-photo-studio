@@ -356,8 +356,8 @@ async function processMessage(message: IncomingMessage) {
           await incrementBuildCount(phone).catch(() => {})
           const previewUrl = await getSafePreviewUrl(site2.slug)
           const body2 = (coderResult2.reply || 'Fertig! 🎉').trim()
-          await sendWhatsAppCTA(metaFrom, `${body2}\n\n${previewUrl}`, 'Website öffnen', previewUrl).catch(async () => {
-            await sendWhatsAppMessage(metaFrom, `${body2}\n\n${previewUrl}`)
+          await sendWhatsAppCTA(metaFrom, body2, 'Website öffnen', previewUrl).catch(async () => {
+            await sendWhatsAppMessage(metaFrom, body2)
           })
           await appendAssistantOnly(phone, `${body2}\n[ROMY_SITE:${previewUrl}]`).catch(() => {})
         } else {

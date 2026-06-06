@@ -159,6 +159,7 @@ export function sanitizeReply(raw: string): string {
   out = out.replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
   out = out.replace(/^\s{0,3}#{1,6}\s+/gm, '')
   out = out.replace(/\*/g, '')
+  out = out.replace(/https?:\/\/[^\s]+/g, '')
   out = out.replace(/[ \t]{2,}/g, ' ')
   out = out.replace(/\n{3,}/g, '\n\n')
   return out.trim()
