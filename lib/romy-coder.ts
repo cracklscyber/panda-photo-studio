@@ -120,9 +120,9 @@ Wähle 1-3 URLs passend zur Branche und Stimmung. Für Autohaus/Fahrzeughandel: 
 3. **Foto-Placeholder** für Stellen wo ein konkretes Kundenfoto hingehört (Team-Portrait, eigener Innenraum, eigenes Produkt) — KEIN \`<img>\` mit erfundener URL. Stattdessen ein bewusst gestyltes Element wie ein \`<div class="photo-placeholder">\` mit aspect-ratio 4/3, warmem Beige-Hintergrund (#F2EEE6), dezenter Dashed-Border, kleinem uppercase-Label "Dein Foto" und Sub-Hinweis "Schick es Luna im Chat". Soll wie ein designtes Element wirken, nicht wie ein Fehler.
 
 ## Antwort an den Kunden
-Nach den Datei-Änderungen: 1-3 Sätze auf Deutsch, natürlicher Chat-Ton. Bei ERSTEM Build ohne mitgeschickte Fotos: häng EINEN Satz an in dem du nach eigenen Fotos fragst und Generierung anbietest. Bei FOLGE-Build (Anpassung): nicht nochmal nach Fotos fragen, nur die Änderung zusammenfassen.
+Nach den Datei-Änderungen: maximal 1-2 kurze Sätze, natürlicher Chat-Ton. NIEMALS erklären was du gemacht hast, keine Aufzählung von Änderungen, keine Details. Beim ERSTEN Build: sag kurz dass der Entwurf steht und lade ein, als nächstes Fotos zu schicken oder Änderungen anzusagen. Beim FOLGE-Build: nur kurz bestätigen dass es erledigt ist, fertig. Kein "Ich habe X geändert", kein "Du findest Y", kein "Ich habe Z hinzugefügt". Du darfst 1 passendes Emoji setzen, z.B. ✨ 🎉 🚀 🌿 😊.
 
-Absolut verboten in der Antwort: Codeblöcke, HTML, Klassennamen, Dateinamen/Pfade, Sternchen (* ** ), Markdown-Headings (#), Emojis, lange Gedankenstriche (—) — nutze Komma/Punkt/Klammern. Die Wörter "Cool" und "professionell" sind tabu (für Qualität: "hochwertig", "sauber", "stimmig"). Keine Hex-Codes, keine CSS-Begriffe, keine technischen Wörter wie "deployed", "Build", "Repository". Auch verboten: das Wort "live" und Formulierungen wie "deine Seite ist live", "online", "veröffentlicht" — die Seite ist beim ersten Build NUR ein Entwurf, niemand außer dem Kunden kann sie sehen. Sag stattdessen "dein Entwurf steht", "ich habe dir einen Entwurf gebaut", "deine Vorschau ist fertig". Erwähne in der Antwort KEINE URL und KEINEN Link — der Chat zeigt automatisch einen Button "Entwurf ansehen" an. Schreib den Link niemals in den Text.
+Absolut verboten in der Antwort: Codeblöcke, HTML, Klassennamen, Dateinamen/Pfade, Sternchen (* ** ), Markdown-Headings (#), lange Gedankenstriche (—) — nutze Komma/Punkt/Klammern. Die Wörter "Cool" und "professionell" sind tabu (für Qualität: "hochwertig", "sauber", "stimmig"). Keine Hex-Codes, keine CSS-Begriffe, keine technischen Wörter wie "deployed", "Build", "Repository". Auch verboten: das Wort "live" und Formulierungen wie "deine Seite ist live", "online", "veröffentlicht" — die Seite ist beim ersten Build NUR ein Entwurf, niemand außer dem Kunden kann sie sehen. Sag stattdessen "dein Entwurf steht", "ich habe dir einen Entwurf gebaut", "deine Vorschau ist fertig". Erwähne in der Antwort KEINE URL und KEINEN Link — der Chat zeigt automatisch einen Button "Entwurf ansehen" an. Schreib den Link niemals in den Text.
 
 NIEMALS konkrete Zeitangaben behaupten ("30 Sekunden", "in einer Minute", "gleich fertig"). Sag stattdessen einfach "ein Moment" oder "ich schau's mir an" ohne Zahl. Die UI zeigt den User schon den Status an.
 
@@ -426,7 +426,7 @@ async function runFastLinkFirstBuild(input: RomyCoderInput): Promise<RomyCoderRe
     return {
       ok: true,
       reply:
-        'Fertig, ich habe deinen Link analysiert und daraus einen ersten schnellen Entwurf gebaut. Ich habe Name, Beschreibung und Kontaktpunkte übernommen, soweit sie öffentlich lesbar waren.',
+        'Dein Entwurf steht ✨ Schreib mir, was du ändern möchtest, oder schick eigene Fotos.',
       files_changed: ['index.html'],
       site_url: sitePreviewUrl(input.slug),
       duration_ms: Date.now() - t0,
@@ -600,10 +600,10 @@ async function runFastFirstBuild(input: RomyCoderInput): Promise<RomyCoderResult
   return {
     ok: true,
     reply: bookingUrl
-      ? 'Fertig, ich habe dir einen ersten schnellen Entwurf gebaut und den Termin-Button mit deinem Kalenderlink verbunden. Eigene Fotos kannst du mir danach direkt schicken.'
+      ? 'Dein Entwurf steht ✨ Der Termin-Button ist schon verbunden. Schick mir eigene Fotos oder sag, was du ändern möchtest.'
       : wantsBooking
-        ? 'Fertig, ich habe dir einen ersten schnellen Entwurf mit Termin-Button gebaut. Schick mir noch deinen Kalenderlink, dann verbinde ich den Button direkt damit.'
-        : 'Fertig, ich habe dir einen ersten schnellen Entwurf gebaut. Ich habe erstmal passende Beispielbilder eingefügt, eigene Fotos kannst du mir danach direkt schicken.',
+        ? 'Dein Entwurf steht ✨ Schick mir noch deinen Kalenderlink, dann verbinde ich den Button direkt damit.'
+        : 'Dein Entwurf steht ✨ Schick mir eigene Fotos oder sag, was du ändern möchtest.',
     files_changed: ['index.html'],
     site_url: sitePreviewUrl(input.slug),
     duration_ms: Date.now() - t0,
@@ -1102,7 +1102,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     const reply = safeReply(
       parsed.assistant,
       run.exitCode === 0
-        ? 'Dein erster Entwurf ist fertig! Wir bauen ihn jetzt gemeinsam aus, so individuell wie du ihn haben möchtest. Schreib mir einfach, was geändert werden soll. Und schick mir gerne eigene Fotos von deinem Unternehmen oder wir generieren gemeinsam passende Bilder.'
+        ? 'Dein Entwurf steht ✨ Schreib mir, was du ändern möchtest, oder schick eigene Fotos.'
         : 'Tut mir leid, ich konnte den Entwurf gerade nicht sauber fertigstellen. Ich leite das ans Team weiter.'
     )
 
