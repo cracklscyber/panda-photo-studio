@@ -103,7 +103,7 @@ export function needsImagePrompt(rawPrompt: string): boolean {
 }
 
 // Purely social messages that can never be an image request regardless of history
-const CONVERSATIONAL_ONLY = /^\s*(danke([,\s]+luna|[,\s]+dir|[,\s]+schön)?|herzlichen\s+dank|sehr\s+gut|toll|super|wunderbar|prima|schön|great|thanks|thank\s+you|tschüss|auf\s+wiedersehen|bye|ciao|ok(ay)?|perfekt|alles\s+klar|verstanden|klar|passt|ja([,\s]+gerne)?|gerne)\s*[!.?]*\s*$/i
+const CONVERSATIONAL_ONLY = /^\s*(ja\s+danke([,\s]+luna)?|danke([,\s]+luna|[,\s]+dir|[,\s]+schön)?|herzlichen\s+dank|sehr\s+gut|toll|super|wunderbar|prima|schön|great|thanks|thank\s+you|tschüss|auf\s+wiedersehen|bye|ciao|ok(ay)?|perfekt|alles\s+klar|verstanden|klar|passt|ja([,\s]+gerne)?|gerne)\s*[!.?]*\s*$/i
 
 export function detectImageIntent(
   userMessage: string,

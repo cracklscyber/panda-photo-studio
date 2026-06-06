@@ -239,7 +239,7 @@ async function processMessage(message: IncomingMessage) {
             role: 'assistant' as const,
             content:
               `Kontext: Diese Kundin hat bereits eine Website-Vorschau (${existingSite.slug}). ` +
-              'Begrüße sie nicht wie eine neue Kundin. Frage kurz, was an der bestehenden Seite geändert werden soll.',
+              'Begrüße sie herzlich aber kurz — nicht wie beim allerersten Kontakt. Reagiere auf ihre aktuelle Nachricht natürlich und geh nur dann auf die bestehende Seite ein, wenn es passt.',
           },
         ]
       : history
@@ -321,7 +321,8 @@ async function processMessage(message: IncomingMessage) {
         console.error('image send failed, falling back to text:', err)
         await sendWhatsAppMessage(metaFrom, `${imageCaption}\n${imageResult.url}`)
       })
-      await appendAssistantOnly(phone, imageResult.reply).catch(() => {})
+      // Store caption alongside the marker so Claude knows what was asked
+      await appendAssistantOnly(phone, `${imageResult.reply}\n${imageCaption}`).catch(() => {})
       return
     }
 
