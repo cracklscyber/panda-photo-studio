@@ -298,12 +298,20 @@ async function processMessage(message: IncomingMessage) {
     } else if (imageIntent.kind === 'cancel') {
       imageResult = cancelDraftImage()
     } else {
-      imageResult = await generateDraftImage({
-        sessionKey: phone,
-        userMessage: imageIntent.rawPrompt,
-        history,
-        isIteration: imageIntent.kind === 'iterate',
-      })
+      try {
+        imageResult = await generateDraftImage({
+          sessionKey: phone,
+          userMessage: imageIntent.rawPrompt,
+          history,
+          isIteration: imageIntent.kind === 'iterate',
+        })
+      } catch (err) {
+        console.error('generateDraftImage threw:', err)
+        const errReply = 'Entschuldigung, da ist etwas schiefgelaufen. Ich leite das an mein Team weiter.'
+        await sendWhatsAppMessage(metaFrom, errReply).catch(() => {})
+        await appendAssistantOnly(phone, errReply).catch(() => {})
+        return
+      }
     }
 
     if (imageResult.url && imageResult.status === 'draft') {
@@ -319,7 +327,7 @@ async function processMessage(message: IncomingMessage) {
 
     const userVisibleReply =
       stripImageMarkers(imageResult.reply) ||
-      'Ich habe dir einen Bildvorschlag erstellt. Sag mir, ob es so passt.'
+      'Entschuldigung, da ist etwas schiefgelaufen. Ich leite das an mein Team weiter.'
 
     // Confirmed: send reply, store marker, then auto-trigger the build
     if (imageResult.status === 'confirmed') {
