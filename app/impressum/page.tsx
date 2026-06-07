@@ -26,7 +26,7 @@ export default function Impressum() {
         <Section title="Angaben gemäß § 5 TMG">
           <p>
             <strong>Luna AI</strong><br />
-            Inhaberin: Christiansen<br />
+            Inhaberin: Z. Christiansen<br />
             Steinstr. 13<br />
             10119 Berlin<br />
             Deutschland
@@ -42,7 +42,7 @@ export default function Impressum() {
 
         <Section title="Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV">
           <p>
-            Christiansen<br />
+            Z. Christiansen<br />
             Steinstr. 13<br />
             10119 Berlin
           </p>
