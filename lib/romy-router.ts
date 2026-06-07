@@ -217,7 +217,7 @@ Entscheide: Will die Kundin konkret etwas AN IHRER WEBSITE ändern/bauen lassen,
 - Design anpassen ("mach es bunter", "andere Farbe", "neue Schriftart")
 - Konkrete Freigabe nach Rückfrage ("ja mach das", "los", "passt", "direkt loslegen")
 - **Bestätigung nach Bild-Generierung:** Wenn Luna gerade Bilder erstellt und gefragt hat "Soll ich mit dem ersten Website-Entwurf beginnen?", und die Kundin bejaht ("ja", "los", "mach", "okay") → BUILD.
-- **Platzierung eines eigenen Fotos:** Wenn in der History ein [ROMY_USER_IMAGE:...]-Marker steht und die Kundin jetzt sagt wo das Bild hin soll ("in den Hero", "in die Galerie", "oben", "als Hintergrundbild", "da rein", "pack es rein", "ja genau", "mach das") → BUILD.
+- **Platzierung eines eigenen Fotos oder eines bestätigten Luna-Bildes:** Wenn in der History ein [ROMY_USER_IMAGE:...]-Marker oder [ROMY_IMAGE_CONFIRMED:...]-Marker steht und die Kundin jetzt sagt wo das Bild hin soll ("in den Hero", "in die Galerie", "oben", "als Hintergrundbild", "da rein", "pack es rein", "auf meine Seite", "ja genau", "mach das") → BUILD.
 
 Wichtig: Eine reine URL ohne Bau-Absicht ist CHAT (wir analysieren Links nicht aktiv im ersten Build).
 
@@ -386,7 +386,9 @@ export interface RouterResult {
 function cleanContent(content: string): string {
   return content
     .replace(/\[ROMY_USER_IMAGE:[^\]]+\]/g, '[Foto von der Kundin]')
-    .replace(/\[ROMY_(?:IMAGE_DRAFT|IMAGE_CONFIRMED|SITE|PAYMENT|CALENDAR):[^\]]+\]/g, '')
+    .replace(/\[ROMY_IMAGE_DRAFT:[^\]]+\]/g, '[Bildvorschlag von Luna]')
+    .replace(/\[ROMY_IMAGE_CONFIRMED:[^\]]+\]/g, '[Bestätigtes Luna-Bild für die Website]')
+    .replace(/\[ROMY_(?:SITE|PAYMENT|CALENDAR):[^\]]+\]/g, '')
     .trim()
 }
 
@@ -397,6 +399,98 @@ function formatHistory(history: HistoryMsg[], maxTurns = 8): HistoryMsg[] {
     .filter((m) => m.content.length > 0)
 }
 
+function hasAssistantHistory(history: HistoryMsg[]): boolean {
+  return history.some((m) => m.role === 'assistant' && cleanContent(m.content).length > 0)
+}
+
+function latestAssistantText(history: HistoryMsg[]): string {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i]
+    if (item.role !== 'assistant') continue
+    const cleaned = cleanContent(item.content)
+    if (cleaned) return cleaned
+  }
+  return ''
+}
+
+function hasActiveWorkContext(history: HistoryMsg[]): boolean {
+  return history.some((m) =>
+    /\[ROMY_(?:USER_IMAGE|IMAGE_DRAFT|IMAGE_CONFIRMED|SITE|TEXT_DRAFT|CHANGE_DRAFT):/.test(
+      m.content
+    )
+  )
+}
+
+function isEligibilityQuestionPending(history: HistoryMsg[]): boolean {
+  if (hasActiveWorkContext(history)) return false
+  const latest = latestAssistantText(history).toLowerCase()
+  return (
+    latest.includes('hast du ein eigenes unternehmen') ||
+    latest.includes('lokales geschäft') ||
+    latest.includes('lokales geschaeft') ||
+    latest.includes('bist du selbstständig') ||
+    latest.includes('bist du selbststaendig')
+  )
+}
+
+function generateLocalOAuthChatReply(
+  history: HistoryMsg[],
+  userMessage: string,
+  hasImage: boolean
+): string {
+  const text = userMessage.trim()
+  const lower = text.toLowerCase()
+  const assistantHasReplied = hasAssistantHistory(history)
+
+  if (!assistantHasReplied) {
+    return 'Hallo! Ich bin Luna, deine Website-Assistentin. Hast du ein eigenes Unternehmen, ein lokales Geschäft oder bist du selbstständig? 😊'
+  }
+
+  if (hasImage) {
+    return 'Das Bild sieht gut aus. Soll ich es in deine Website einbauen oder möchtest du, dass ich es vorher noch anpasse? ✨'
+  }
+
+  if (/^(danke|danke luna|dankeschön|danke schön|super danke|ja danke|perfekt danke|top danke)[\s!.]*$/i.test(lower)) {
+    return 'Sehr gerne, das freut mich wirklich 😊'
+  }
+
+  if (/\b(domain|eigene domain|www\.|\.de|\.com|\.net)\b/i.test(lower)) {
+    return 'Ja, eine eigene Domain ist möglich. Dafür meldet sich jemand aus unserem Team persönlich bei dir, meist innerhalb von 24 Stunden 📅'
+  }
+
+  if (/\b(kosten|preis|abo|zahlung|bezahlen|stripe|rechnung)\b/i.test(lower)) {
+    return 'Du kannst Luna erstmal kostenlos testen. Wenn du später mehr Änderungen brauchst oder live gehen willst, zeige ich dir den nächsten Schritt ganz klar an ✨'
+  }
+
+  if (/\b(termin|kalender|beratung|call|gespräch|gespraech)\b/i.test(lower)) {
+    return 'Ja, du kannst einen Beratungstermin buchen. Soll ich dir den Termin-Link schicken? 📅'
+  }
+
+  if (/\b(ja|jap|genau|habe ich|hab ich|unternehmen|geschäft|geschaeft|selbstständig|selbststaendig|gmbh|ug|praxis|studio|schule|laden|agentur|firma|trainer|training|café|cafe|restaurant|friseur|kosmetik|handwerk|hundeschule)\b/i.test(lower)) {
+    return 'Perfekt, dann passt Luna zu dir. Wie heißt dein Unternehmen und was bietest du genau an? ✨'
+  }
+
+  if (/\b(nein|nee|nö|nope)\b/i.test(lower)) {
+    if (
+      isEligibilityQuestionPending(history) &&
+      !/\b(unternehmen|geschäft|geschaeft|selbstständig|selbststaendig|gmbh|ug|praxis|studio|schule|laden|agentur|firma|trainer|training|café|cafe|restaurant|friseur|kosmetik|handwerk|hundeschule)\b/i.test(lower)
+    ) {
+      return 'Dann ist Luna gerade wahrscheinlich nicht das richtige Produkt für dich. Komm gern wieder, wenn du ein eigenes Projekt oder Unternehmen online bringen möchtest 🌿'
+    }
+    return 'Verstanden. Sag mir kurz, was genau anders soll, dann passe ich es an ✨'
+  }
+
+  if (/\b(text|texte|headline|überschrift|ueberschrift|beschreibung|copy)\b/i.test(lower)) {
+    return 'Ja, ich kann dir Texte schreiben. Sag mir kurz, wofür der Text sein soll und welche Stimmung du möchtest ✨'
+  }
+
+  if (/\b(bild|bilder|foto|fotos|motiv|hintergrund|aufwerten|bearbeiten)\b/i.test(lower)) {
+    return 'Ja, ich kann Bilder für dich vorbereiten. Beschreib mir kurz das Motiv und den Stil, dann mache ich dir einen Vorschlag 🎨'
+  }
+
+  return 'Ich bin da. Erzähl mir kurz, was du für deine Website brauchst oder was ich als Nächstes anpassen soll ✨'
+}
+
 
 export async function classifyIntent(
   history: HistoryMsg[],
@@ -404,14 +498,6 @@ export async function classifyIntent(
   hasImage: boolean
 ): Promise<{ intent: 'build' | 'chat'; ms: number; usage: { input: number; output: number } }> {
   const t0 = Date.now()
-  if (usesClaudeCodeOAuth()) {
-    return {
-      intent: classifyIntentLocally(history, userMessage, hasImage),
-      ms: Date.now() - t0,
-      usage: { input: 0, output: 0 },
-    }
-  }
-
   const client = anthropicClient()
 
   const lines: string[] = []
@@ -422,23 +508,32 @@ export async function classifyIntent(
   lines.push('')
   lines.push('Intent:')
 
-  const res = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8,
-    system: CLASSIFY_SYSTEM,
-    messages: [{ role: 'user', content: lines.join('\n') }],
-  })
+  try {
+    const res = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8,
+      system: CLASSIFY_SYSTEM,
+      messages: [{ role: 'user', content: lines.join('\n') }],
+    })
 
-  const text = res.content
-    .map((b) => (b.type === 'text' ? b.text : ''))
-    .join('')
-    .toUpperCase()
-  const intent: 'build' | 'chat' = text.includes('BUILD') ? 'build' : 'chat'
+    const text = res.content
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('')
+      .toUpperCase()
+    const intent: 'build' | 'chat' = text.includes('BUILD') ? 'build' : 'chat'
 
-  return {
-    intent,
-    ms: Date.now() - t0,
-    usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
+    return {
+      intent,
+      ms: Date.now() - t0,
+      usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
+    }
+  } catch (err) {
+    console.error('classifyIntent semantic fallback:', err)
+    return {
+      intent: classifyIntentLocally(history, userMessage, hasImage),
+      ms: Date.now() - t0,
+      usage: { input: 0, output: 0 },
+    }
   }
 }
 
@@ -457,23 +552,32 @@ export async function generateChatReply(
     content: userMessage + (hasImage ? '\n[Die Kundin hat ein Bild mitgeschickt.]' : ''),
   })
 
-  const res = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 400,
-    system: CHAT_SYSTEM,
-    messages: msgs,
-  })
+  try {
+    const res = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 400,
+      system: CHAT_SYSTEM,
+      messages: msgs,
+    })
 
-  const reply =
-    res.content
-      .map((b) => (b.type === 'text' ? b.text : ''))
-      .join('')
-      .trim() || 'Sag mir einfach, was ich für deine Seite machen soll.'
+    const reply =
+      res.content
+        .map((b) => (b.type === 'text' ? b.text : ''))
+        .join('')
+        .trim() || 'Sag mir einfach, was ich für deine Seite machen soll.'
 
-  return {
-    reply,
-    ms: Date.now() - t0,
-    usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
+    return {
+      reply,
+      ms: Date.now() - t0,
+      usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
+    }
+  } catch (err) {
+    console.error('generateChatReply semantic fallback:', err)
+    return {
+      reply: generateLocalOAuthChatReply(history, userMessage, hasImage),
+      ms: Date.now() - t0,
+      usage: { input: 0, output: 0 },
+    }
   }
 }
 

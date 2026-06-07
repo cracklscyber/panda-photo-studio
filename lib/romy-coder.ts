@@ -703,6 +703,7 @@ async function findWarmSandbox(
 interface RomyCoderInput {
   slug: string
   userMessage: string
+  phone?: string | null
   imageUrl?: string
   history?: Array<{ role: 'user' | 'assistant'; content: string }>
   isFirstBuild?: boolean
@@ -713,7 +714,7 @@ interface RomyCoderInput {
 }
 
 export async function runRomyCoder(input: RomyCoderInput): Promise<RomyCoderResult> {
-  const { slug, userMessage, imageUrl, history = [], isFirstBuild = false } = input
+  const { slug, userMessage, phone = null, imageUrl, history = [], isFirstBuild = false } = input
   const t0 = Date.now()
 
   if (ALLOW_TEMPLATE_FALLBACK && isFirstBuild && !imageUrl && extractUrlFromContext(userMessage, history)) {
@@ -1143,13 +1144,17 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
 
     result.transcript_path = await saveBuildTranscript({
       slug,
-      phone: null,
+      phone,
       ok,
       was_warm: wasWarm,
       is_first_build: isFirstBuild,
       duration_ms: result.duration_ms,
       cost_usd: result.cost_usd,
       user_message: userMessage,
+      history_summary: history.slice(-12).map((h) => ({
+        role: h.role,
+        text: h.content.slice(0, 800),
+      })),
       log: log || [],
       agent: {
         exit_code: run.exitCode,
@@ -1177,13 +1182,17 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     mark('error', { step: currentStep, message: (err as Error).message })
     const exceptionTranscriptPath = await saveBuildTranscript({
       slug,
-      phone: null,
+      phone,
       ok: false,
       was_warm: wasWarm,
       is_first_build: isFirstBuild,
       duration_ms: Date.now() - t0,
       cost_usd: null,
       user_message: userMessage,
+      history_summary: history.slice(-12).map((h) => ({
+        role: h.role,
+        text: h.content.slice(0, 800),
+      })),
       log: log || [],
       agent: {
         exit_code: null,

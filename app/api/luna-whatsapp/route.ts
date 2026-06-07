@@ -59,6 +59,38 @@ function hasRecentImageDraft(
   return false
 }
 
+function hasRecentImageContext(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  for (let i = history.length - 1; i >= Math.max(0, history.length - 14); i--) {
+    const item = history[i]
+    if (
+      item.content.includes('[ROMY_USER_IMAGE:') ||
+      item.content.includes('[ROMY_IMAGE_DRAFT:') ||
+      item.content.includes('[ROMY_IMAGE_CONFIRMED:')
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function isImagePlacementRequest(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  if (!hasRecentImageContext(history)) return false
+  const lower = text.toLowerCase()
+  const placementSignal =
+    /\b(einfüg|einfueg|einbau|platzier|platzieren|hero|galerie|hintergrund|rein|drauf|nutzen|verwenden)\b/i.test(
+      lower
+    ) ||
+    /\b(auf|in)\s+(meine|die|der)?\s*(seite|website|webseite)\b/i.test(lower)
+  const imageReference =
+    /\b(bild|foto|fotos|motiv|dalmatiner|hund|hundebild|das|es)\b/i.test(lower)
+  return placementSignal && imageReference
+}
+
 function socialAckReply(
   text: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>
@@ -432,7 +464,12 @@ async function processMessage(message: IncomingMessage) {
     console.error('appendUserOnly failed:', err)
   )
 
-  const approvedTextDraft = latestTextDraft(history)
+  const imagePlacementRequest = isImagePlacementRequest(text || '', history)
+  if (imagePlacementRequest) {
+    text = `Baue das zuletzt bestätigte oder hochgeladene Bild passend in die Website ein. Wunsch der Kundin: ${text || 'Bild einbauen'}`
+  }
+
+  const approvedTextDraft = imagePlacementRequest ? null : latestTextDraft(history)
   if (approvedTextDraft) {
     const decision = await classifyDraftResponse(history, text || '', approvedTextDraft)
     if (decision === 'approve') {
@@ -458,7 +495,7 @@ async function processMessage(message: IncomingMessage) {
     }
   }
 
-  if (!approvedTextDraft) {
+  if (!imagePlacementRequest && !approvedTextDraft) {
     const draft = textDraftReply(text || '', history)
     if (draft) {
       await sendWhatsAppMessage(metaFrom, draft.reply)
@@ -467,7 +504,7 @@ async function processMessage(message: IncomingMessage) {
     }
   }
 
-  const approvedChangeDraft = latestChangeDraft(history)
+  const approvedChangeDraft = imagePlacementRequest ? null : latestChangeDraft(history)
   if (approvedChangeDraft) {
     const decision = await classifyDraftResponse(history, text || '', approvedChangeDraft)
     if (decision === 'approve') {
@@ -493,7 +530,7 @@ async function processMessage(message: IncomingMessage) {
     }
   }
 
-  if (!approvedChangeDraft) {
+  if (!imagePlacementRequest && !approvedChangeDraft) {
     const draft = changeDraftReply(text || '', history)
     if (draft) {
       await sendWhatsAppMessage(metaFrom, draft.reply)
@@ -512,7 +549,9 @@ async function processMessage(message: IncomingMessage) {
   // Step 0: explicit image generation / iteration / confirmation.
   // This must run before the website-build classifier, otherwise requests like
   // "Generiere mir Nagel Design Bilder" get misrouted into the coder.
-  const imageIntent = detectImageIntent(text || '', history)
+  const imageIntent = imagePlacementRequest
+    ? { kind: 'none' as const }
+    : detectImageIntent(text || '', history)
   if (imageIntent.kind !== 'none') {
     console.log('whatsapp image intent', {
       phone,
@@ -606,6 +645,7 @@ async function processMessage(message: IncomingMessage) {
         const coderResult2 = await runRomyCoder({
           slug: site2.slug,
           userMessage: text || 'Bild in Website einbauen',
+          phone,
           imageUrl,
           history: updatedRoutedHistory,
           isFirstBuild: isFirst2,
@@ -712,6 +752,7 @@ async function processMessage(message: IncomingMessage) {
   const coderResult = await runRomyCoder({
     slug: site.slug,
     userMessage: text || 'Hallo',
+    phone,
     imageUrl: effectiveImageUrl,
     history,
     isFirstBuild,

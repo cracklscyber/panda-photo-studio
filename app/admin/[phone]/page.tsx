@@ -77,6 +77,8 @@ interface BuildLogRow {
   duration_ms: number | null
   was_warm: boolean | null
   user_message: string | null
+  error_step: string | null
+  error_msg: string | null
   created_at?: string
 }
 
@@ -98,6 +100,16 @@ function formatRelative(iso: string): string {
   if (ms < 3_600_000) return `vor ${Math.floor(ms / 60_000)} Min`
   if (ms < 86_400_000) return `vor ${Math.floor(ms / 3_600_000)} Std`
   return `vor ${Math.floor(ms / 86_400_000)} Tagen`
+}
+
+function extractTranscriptPath(errorMsg?: string | null): string | null {
+  const match = (errorMsg || '').match(/(?:^|\s)transcript=([^\s]+)/)
+  return match?.[1] || null
+}
+
+function cleanBuildError(errorMsg?: string | null): string | null {
+  const cleaned = (errorMsg || '').replace(/\s*transcript=[^\s]+/g, '').trim()
+  return cleaned || null
 }
 
 async function togglePaid(formData: FormData) {
@@ -145,7 +157,7 @@ export default async function ConvoPage({
       sb.from('romy_sites').select('*').eq('phone', phone).maybeSingle(),
       sb
         .from('romy_build_logs')
-        .select('ok, cost_usd, duration_ms, was_warm, user_message, created_at')
+        .select('ok, cost_usd, duration_ms, was_warm, user_message, error_step, error_msg, created_at')
         .eq('phone', phone)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -476,36 +488,55 @@ export default async function ConvoPage({
               {builds.length === 0 && (
                 <p className="text-xs text-neutral-400">Keine Builds.</p>
               )}
-              {builds.map((b, i) => (
-                <div
-                  key={i}
-                  className="rounded-lg border border-neutral-100 px-3 py-2 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={
-                        b.ok ? 'text-emerald-600' : 'text-red-600'
-                      }
-                    >
-                      {b.ok ? '✓' : '✗'}{' '}
-                      {b.was_warm ? 'warm' : 'cold'}
-                    </span>
-                    <span className="font-medium">
-                      ${(b.cost_usd || 0).toFixed(3)}
-                    </span>
+              {builds.map((b, i) => {
+                const transcriptPath = extractTranscriptPath(b.error_msg)
+                const buildError = cleanBuildError(b.error_msg)
+                return (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-neutral-100 px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={
+                          b.ok ? 'text-emerald-600' : 'text-red-600'
+                        }
+                      >
+                        {b.ok ? '✓' : '✗'}{' '}
+                        {b.was_warm ? 'warm' : 'cold'}
+                      </span>
+                      <span className="font-medium">
+                        ${(b.cost_usd || 0).toFixed(3)}
+                      </span>
+                    </div>
+                    {b.duration_ms != null && (
+                      <div className="text-neutral-400">
+                        {(b.duration_ms / 1000).toFixed(1)}s
+                      </div>
+                    )}
+                    {b.user_message && (
+                      <div className="mt-1 line-clamp-2 text-neutral-600">
+                        {b.user_message.slice(0, 100)}
+                      </div>
+                    )}
+                    {!b.ok && (b.error_step || buildError || transcriptPath) && (
+                      <div className="mt-2 rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+                        {b.error_step && <div>Step: {b.error_step}</div>}
+                        {buildError && (
+                          <div className="mt-1 break-words">
+                            {buildError.slice(0, 220)}
+                          </div>
+                        )}
+                        {transcriptPath && (
+                          <div className="mt-1 break-all font-mono text-red-800">
+                            Transcript: {transcriptPath}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {b.duration_ms != null && (
-                    <div className="text-neutral-400">
-                      {(b.duration_ms / 1000).toFixed(1)}s
-                    </div>
-                  )}
-                  {b.user_message && (
-                    <div className="mt-1 line-clamp-2 text-neutral-600">
-                      {b.user_message.slice(0, 100)}
-                    </div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </aside>
