@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /impressum
+Disallow: /datenschutz
+Disallow: /api/
+
+Sitemap: https://halloluna.net/sitemap.xml

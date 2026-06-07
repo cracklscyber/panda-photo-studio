@@ -26,7 +26,7 @@ export default function Impressum() {
         <Section title="Angaben gemäß § 5 TMG">
           <p>
             <strong>Luna AI</strong><br />
-            Inhaberin: Zoe Sophie Christiansen<br />
+            Inhaberin: Christiansen<br />
             Steinstraße 15<br />
             10119 Berlin<br />
             Deutschland
@@ -42,7 +42,7 @@ export default function Impressum() {
 
         <Section title="Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV">
           <p>
-            Zoe Sophie Christiansen<br />
+            Christiansen<br />
             Steinstraße 15<br />
             10119 Berlin
           </p>
