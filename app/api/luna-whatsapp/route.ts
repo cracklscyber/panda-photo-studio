@@ -156,11 +156,13 @@ function isTextDraftRequest(text: string): boolean {
 
 function extractTextTopic(text: string): string {
   const cleaned = text
-    .replace(/\b(texte?|copy|formulierung(?:en)?|formulier(?:e|en)?|schreib(?:e)?|bessern|verbessern|einfügen|einfuegen|einbauen)\b/gi, ' ')
+    .replace(/\b(texte?|copy|formulierung(?:en)?|formulier(?:e|en)?|schreib(?:e|en)?|bessern|verbessern|einfügen|einfuegen|einbauen|generier(?:e|en)?|erstell(?:e|en)?|mach(?:e|en)?)\b/gi, ' ')
+    .replace(/\b(kannst|könntest|koenntest|würdest|wuerdest|du|mir|mich|mein(?:e|en|er|es)?|einen?|eine|der|die|das|für|fuer|bitte|mal|auch|kurz|gerne|frage)\b/gi, ' ')
     .replace(/\b(z\.?\s*b\.?|zum beispiel|beispielsweise)\b/gi, ' ')
+    .replace(/[?.!,;:]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  return cleaned || text.trim()
+  return cleaned
 }
 
 function makeTextDraft(text: string): string | null {
