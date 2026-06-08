@@ -154,10 +154,38 @@ function isTextDraftRequest(text: string): boolean {
   return true
 }
 
+function latestAssistantAskedForTextTopic(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  for (let i = history.length - 1; i >= Math.max(0, history.length - 6); i--) {
+    const item = history[i]
+    if (item.role !== 'assistant') continue
+    const lower = item.content.toLowerCase()
+    if (
+      lower.includes('worum es gehen soll') ||
+      lower.includes('wofür der text') ||
+      lower.includes('wofuer der text') ||
+      lower.includes('welchen text') ||
+      lower.includes('welches thema') ||
+      lower.includes('welche stimmung')
+    ) {
+      return true
+    }
+    if (
+      item.content.includes(TEXT_DRAFT_MARKER) ||
+      item.content.includes(CHANGE_DRAFT_MARKER) ||
+      item.content.includes('[ROMY_SITE:')
+    ) {
+      return false
+    }
+  }
+  return false
+}
+
 function extractTextTopic(text: string): string {
   const cleaned = text
     .replace(/\b(texte?|copy|formulierung(?:en)?|formulier(?:e|en)?|schreib(?:e|en)?|bessern|verbessern|einfügen|einfuegen|einbauen|generier(?:e|en)?|erstell(?:e|en)?|mach(?:e|en)?)\b/gi, ' ')
-    .replace(/\b(kannst|könntest|koenntest|würdest|wuerdest|du|mir|mich|mein(?:e|en|er|es)?|einen?|eine|der|die|das|für|fuer|bitte|mal|auch|kurz|gerne|frage)\b/gi, ' ')
+    .replace(/\b(kannst|könntest|koenntest|würdest|wuerdest|brauch(?:e|en)?|du|mir|mich|mein(?:e|en|er|es)?|einen?|eine|der|die|das|für|fuer|bitte|mal|auch|kurz|gerne|frage)\b/gi, ' ')
     .replace(/\b(z\.?\s*b\.?|zum beispiel|beispielsweise)\b/gi, ' ')
     .replace(/[?.!,;:]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -165,9 +193,16 @@ function extractTextTopic(text: string): string {
   return cleaned
 }
 
+function hasUsableTextTopic(text: string): boolean {
+  const topic = extractTextTopic(text)
+  if (topic.length < 3) return false
+  if (/^(ja|nein|nee|ok|okay|danke|passt|mach|weiter)$/i.test(topic)) return false
+  return true
+}
+
 function makeTextDraft(text: string): string | null {
   const topic = extractTextTopic(text)
-  if (topic.length < 8) {
+  if (!hasUsableTextTopic(text)) {
     return 'Ja, gerne. Schreib mir kurz, worum es gehen soll, dann formuliere ich dir erst einen Vorschlag für den Chat ✨'
   }
 
@@ -194,14 +229,15 @@ function textDraftReply(
   text: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): { reply: string; stored: string } | null {
+  const pendingTopic = latestAssistantAskedForTextTopic(history)
   const previousDraft = latestTextDraft(history)
-  if (previousDraft && REJECTION_RE.test(text)) {
+  if (!pendingTopic && previousDraft && REJECTION_RE.test(text)) {
     const reply =
       'Alles gut. Sag mir kurz, was anders klingen soll, zum Beispiel wärmer, kürzer oder konkreter, dann formuliere ich ihn neu ✨'
     return { reply, stored: reply }
   }
 
-  if (!isTextDraftRequest(text)) return null
+  if (!isTextDraftRequest(text) && !(pendingTopic && hasUsableTextTopic(text))) return null
 
   const reply = makeTextDraft(text)
   if (!reply) return null
@@ -471,7 +507,11 @@ async function processMessage(message: IncomingMessage) {
     text = `Baue das zuletzt bestätigte oder hochgeladene Bild passend in die Website ein. Wunsch der Kundin: ${text || 'Bild einbauen'}`
   }
 
-  const approvedTextDraft = imagePlacementRequest ? null : latestTextDraft(history)
+  const incomingTextDraftRequest =
+    isTextDraftRequest(text || '') ||
+    (latestAssistantAskedForTextTopic(history) && hasUsableTextTopic(text || ''))
+  const approvedTextDraft =
+    imagePlacementRequest || incomingTextDraftRequest ? null : latestTextDraft(history)
   if (approvedTextDraft) {
     const decision = await classifyDraftResponse(history, text || '', approvedTextDraft)
     if (decision === 'approve') {
