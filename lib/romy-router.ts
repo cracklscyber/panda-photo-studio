@@ -6,6 +6,9 @@ interface HistoryMsg {
   content: string
 }
 
+const SONNET_MODEL = 'claude-sonnet-4-6'
+const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
+
 function anthropicClient(): Anthropic {
   const credential = process.env.ANTHROPIC_API_KEY || ''
   if (credential.startsWith('sk-ant-oat')) {
@@ -16,6 +19,11 @@ function anthropicClient(): Anthropic {
 
 function usesClaudeCodeOAuth(): boolean {
   return (process.env.ANTHROPIC_API_KEY || '').startsWith('sk-ant-oat')
+}
+
+function isRetryableClaudeError(err: unknown): boolean {
+  const status = (err as { status?: number })?.status
+  return status === 429 || status === 503 || status === 529
 }
 
 export type DraftDecision = 'approve' | 'revise' | 'reject' | 'unclear'
@@ -39,7 +47,7 @@ export async function classifyDraftResponse(
   const client = anthropicClient()
   try {
     const res = await client.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: HAIKU_MODEL,
       max_tokens: 8,
       temperature: 0,
       system: `Du bist ein sehr genauer deutscher Kontext-Classifier für Luna.
@@ -510,7 +518,7 @@ export async function classifyIntent(
 
   try {
     const res = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: SONNET_MODEL,
       max_tokens: 8,
       system: CLASSIFY_SYSTEM,
       messages: [{ role: 'user', content: lines.join('\n') }],
@@ -528,7 +536,29 @@ export async function classifyIntent(
       usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
     }
   } catch (err) {
-    console.error('classifyIntent semantic fallback:', err)
+    if (isRetryableClaudeError(err)) {
+      try {
+        const res = await client.messages.create({
+          model: HAIKU_MODEL,
+          max_tokens: 8,
+          system: CLASSIFY_SYSTEM,
+          messages: [{ role: 'user', content: lines.join('\n') }],
+        })
+        const text = res.content
+          .map((b) => (b.type === 'text' ? b.text : ''))
+          .join('')
+          .toUpperCase()
+        const intent: 'build' | 'chat' = text.includes('BUILD') ? 'build' : 'chat'
+        return {
+          intent,
+          ms: Date.now() - t0,
+          usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
+        }
+      } catch (retryErr) {
+        console.error('classifyIntent haiku fallback failed:', retryErr)
+      }
+    }
+    console.error('classifyIntent local fallback:', err)
     return {
       intent: classifyIntentLocally(history, userMessage, hasImage),
       ms: Date.now() - t0,
@@ -554,7 +584,7 @@ export async function generateChatReply(
 
   try {
     const res = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: SONNET_MODEL,
       max_tokens: 400,
       system: CHAT_SYSTEM,
       messages: msgs,
@@ -572,7 +602,29 @@ export async function generateChatReply(
       usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
     }
   } catch (err) {
-    console.error('generateChatReply semantic fallback:', err)
+    if (isRetryableClaudeError(err)) {
+      try {
+        const res = await client.messages.create({
+          model: HAIKU_MODEL,
+          max_tokens: 400,
+          system: CHAT_SYSTEM,
+          messages: msgs,
+        })
+        const reply =
+          res.content
+            .map((b) => (b.type === 'text' ? b.text : ''))
+            .join('')
+            .trim() || 'Sag mir einfach, was ich für deine Seite machen soll.'
+        return {
+          reply,
+          ms: Date.now() - t0,
+          usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
+        }
+      } catch (retryErr) {
+        console.error('generateChatReply haiku fallback failed:', retryErr)
+      }
+    }
+    console.error('generateChatReply local fallback:', err)
     return {
       reply: generateLocalOAuthChatReply(history, userMessage, hasImage),
       ms: Date.now() - t0,
@@ -607,7 +659,7 @@ export async function generateTextDraft(
 
   try {
     const res = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: SONNET_MODEL,
       max_tokens: 500,
       system: `Du bist eine erfahrene deutsche Texterin für kleine lokale Unternehmen. Deine Aufgabe ist es, echte, herzliche und überzeugende Website-Texte zu schreiben – keine generischen Floskeln.
 
@@ -631,7 +683,24 @@ Regeln:
       .trim()
     return text || null
   } catch (err) {
-    console.error('generateTextDraft failed:', err)
+    if (isRetryableClaudeError(err)) {
+      try {
+        const res = await client.messages.create({
+          model: HAIKU_MODEL,
+          max_tokens: 500,
+          system: `Du bist eine erfahrene deutsche Texterin für kleine lokale Unternehmen. Schreibe einen fertigen, konkreten Website-Text auf Deutsch. Gib NUR den Text aus, keine Einleitung, kein Markdown, keine Aufzählung. 3-5 Sätze. Nutze Datum, Branche und Details aus dem Gespräch.`,
+          messages: [{ role: 'user', content: prompt }],
+        })
+        const text = res.content
+          .map((b) => (b.type === 'text' ? b.text : ''))
+          .join('')
+          .trim()
+        if (text) return text
+      } catch (retryErr) {
+        console.error('generateTextDraft haiku fallback failed:', retryErr)
+      }
+    }
+    console.error('generateTextDraft local fallback:', err)
     return fallbackTextDraft(cleanTopic, history)
   }
 }
