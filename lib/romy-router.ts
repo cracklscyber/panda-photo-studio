@@ -581,6 +581,101 @@ export async function generateChatReply(
   }
 }
 
+export async function generateTextDraft(
+  cleanTopic: string,
+  history: HistoryMsg[]
+): Promise<string | null> {
+  const client = anthropicClient()
+
+  // Build rich context from both sides of the conversation so Claude knows
+  // the business name, type, and tone — not just the bare topic
+  const contextLines: string[] = []
+  for (const m of history.slice(-20)) {
+    // Skip messages that are purely internal markers
+    const content = m.content
+      .replace(/\[ROMY_[A-Z_]+:[^\]]*\]/g, '')
+      .trim()
+    if (!content) continue
+    const role = m.role === 'user' ? 'Kundin' : 'Luna'
+    contextLines.push(`${role}: ${content.slice(0, 300)}`)
+  }
+  const context = contextLines.join('\n')
+
+  const prompt = context
+    ? `Gesprächsverlauf:\n${context}\n\n---\nSchreibe jetzt einen Website-Text über: ${cleanTopic}`
+    : `Schreibe einen Website-Text über: ${cleanTopic}`
+
+  try {
+    const res = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 500,
+      system: `Du bist eine erfahrene deutsche Texterin für kleine lokale Unternehmen. Deine Aufgabe ist es, echte, herzliche und überzeugende Website-Texte zu schreiben – keine generischen Floskeln.
+
+Aufgabe: Schreibe einen fertigen Website-Text für das genannte Thema.
+
+Regeln:
+- NUR den fertigen Text ausgeben – keine Einleitung wie "Hier ist der Text:", kein Kommentar danach
+- 3–5 Sätze, warmherzig und einladend – der Text soll echte Menschen ansprechen
+- Wenn der Gesprächsverlauf einen Unternehmensnamen, eine Branche oder konkrete Details enthält, beziehe dich darauf
+- Wenn ein Datum, eine Uhrzeit oder ein Starttermin im Kontext erwähnt wird, baue es natürlich ein
+- Kein Markdown, keine Sternchen, keine Aufzählungen
+- Schreibe so, als wäre es der Inhaber selbst, der herzlich und persönlich über sein Angebot spricht
+- Direkte Ansprache der Besucher ist gut ("Sie sind herzlich willkommen" oder "Komm vorbei")
+- NICHT "malen", stattdessen "erstellen" oder "generieren" bei Bildthemen`,
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    const text = res.content
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('')
+      .trim()
+    return text || null
+  } catch (err) {
+    console.error('generateTextDraft failed:', err)
+    return fallbackTextDraft(cleanTopic, history)
+  }
+}
+
+function fallbackTextDraft(cleanTopic: string, history: HistoryMsg[]): string | null {
+  const topic = cleanTopic.trim()
+  if (!topic) return null
+
+  const context = history
+    .slice(-20)
+    .map((m) => cleanContent(m.content))
+    .join('\n')
+  const combined = `${context}\n${topic}`
+  const date =
+    combined.match(/\b(?:ab|am)\s+(\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)\b/i)?.[1] ||
+    combined.match(/\b(\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)\b/)?.[1]
+  const lower = combined.toLowerCase()
+
+  if (/\b(welpe|welpen|welpenschule|hundeschule|hundetraining|hund)\b/i.test(lower)) {
+    const start = date ? `Ab dem ${date} startet unsere Welpenschule.` : 'In unserer Welpenschule lernen junge Hunde die ersten wichtigen Grundlagen.'
+    return [
+      start,
+      'In kleinen, ruhigen Schritten üben wir Alltagssicherheit, Orientierung am Menschen und ein entspanntes Miteinander mit anderen Hunden.',
+      'So bekommt dein Welpe einen liebevollen Start und du bekommst klare Anleitung für den gemeinsamen Alltag.',
+    ].join(' ')
+  }
+
+  if (/\b(sommerschule|sommerangebot|sommerkurs)\b/i.test(lower)) {
+    const start = date ? `Ab dem ${date} startet unser Sommerangebot.` : 'Diesen Sommer gibt es ein besonderes Angebot für alle, die in Ruhe dranbleiben möchten.'
+    return [
+      start,
+      'Wir nutzen die Sommerzeit für klare Übungen, persönliche Begleitung und kleine Fortschritte, die im Alltag wirklich helfen.',
+      'Wenn du dir mehr Sicherheit, Struktur und ein gutes Gefühl wünschst, bist du herzlich willkommen.',
+    ].join(' ')
+  }
+
+  const prettyTopic = topic.charAt(0).toUpperCase() + topic.slice(1)
+  return [
+    `${prettyTopic} bekommt bei uns einen klaren, verständlichen Platz.`,
+    'Wir erklären dir ruhig und persönlich, worum es geht, für wen das Angebot passt und wie du starten kannst.',
+    'So wissen Interessierte sofort, was sie erwartet und warum sie sich bei dir gut aufgehoben fühlen.',
+  ].join(' ')
+}
+
 export async function routeMessage(
   history: HistoryMsg[],
   userMessage: string,

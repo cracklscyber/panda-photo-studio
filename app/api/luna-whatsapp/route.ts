@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { waitUntil } from '@vercel/functions'
 import { createHmac, timingSafeEqual } from 'crypto'
-import { classifyDraftResponse, routeMessage } from '@/lib/romy-router'
+import { classifyDraftResponse, generateTextDraft, routeMessage } from '@/lib/romy-router'
 import { runRomyCoder, sanitizeReply } from '@/lib/romy-coder'
 import { detectImageIntent, isFeatureEnabled as imageFeatureEnabled, needsImagePrompt } from '@/lib/romy-image-intent'
 import {
@@ -163,11 +163,13 @@ function latestAssistantAskedForTextTopic(
     const lower = item.content.toLowerCase()
     if (
       lower.includes('worum es gehen soll') ||
+      lower.includes('worum geht es genau') ||
       lower.includes('wofür der text') ||
       lower.includes('wofuer der text') ||
       lower.includes('welchen text') ||
       lower.includes('welches thema') ||
-      lower.includes('welche stimmung')
+      lower.includes('welche stimmung') ||
+      lower.includes('was macht dich besonders')
     ) {
       return true
     }
@@ -184,10 +186,14 @@ function latestAssistantAskedForTextTopic(
 
 function extractTextTopic(text: string): string {
   const cleaned = text
+    // Strip meta-instruction phrases before word-level cleanup
+    .replace(/\b(hier\s+in\s+den\s+chat|in\s+den\s+chat)\b/gi, ' ')
+    // Strip command verbs
     .replace(/\b(texte?|copy|formulierung(?:en)?|formulier(?:e|en)?|schreib(?:e|en)?|bessern|verbessern|einfügen|einfuegen|einbauen|generier(?:e|en)?|erstell(?:e|en)?|mach(?:e|en)?)\b/gi, ' ')
-    .replace(/\b(kannst|könntest|koenntest|würdest|wuerdest|brauch(?:e|en)?|du|mir|mich|mein(?:e|en|er|es)?|einen?|eine|der|die|das|für|fuer|bitte|mal|auch|kurz|gerne|frage)\b/gi, ' ')
+    // Strip stop words and instruction noise
+    .replace(/\b(ich|er|sie|es|wir|ihr|ihn|ihm|kannst|könntest|koenntest|würdest|wuerdest|soll(?:st)?|brauch(?:e|en)?|du|mir|mich|mein(?:e|en|er|es)?|einen?|eine|am|dem|der|die|das|den|für|fuer|bitte|mal|auch|kurz|gerne|frage|hier|etwas|in|jetzt|erstmal|erst|schon|chat)\b/gi, ' ')
     .replace(/\b(z\.?\s*b\.?|zum beispiel|beispielsweise)\b/gi, ' ')
-    .replace(/[?.!,;:]+/g, ' ')
+    .replace(/[?.!,;:\-–]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
   return cleaned
@@ -200,35 +206,10 @@ function hasUsableTextTopic(text: string): boolean {
   return true
 }
 
-function makeTextDraft(text: string): string | null {
-  const topic = extractTextTopic(text)
-  if (!hasUsableTextTopic(text)) {
-    return 'Ja, gerne. Schreib mir kurz, worum es gehen soll, dann formuliere ich dir erst einen Vorschlag für den Chat ✨'
-  }
-
-  if (/sommerschule/i.test(text)) {
-    return [
-      'Ich würde es so schreiben:',
-      '',
-      'Diesen Sommer bieten wir eine Sommerschule für Hunde und ihre Menschen an. In entspannter Atmosphäre trainieren wir Alltagssicherheit, Orientierung und ein gutes Miteinander. Das Angebot passt für alle, die die Sommerzeit nutzen möchten, um mit ihrem Hund sicherer, klarer und gelassener zu werden.',
-      '',
-      'Passt das so? Wenn du zustimmst, baue ich den Text auf deine Seite ein ✨',
-    ].join('\n')
-  }
-
-  return [
-    'Ich würde es so schreiben:',
-    '',
-    `${topic.charAt(0).toUpperCase()}${topic.slice(1)} bekommt auf deiner Seite einen klaren, gut verständlichen Bereich. Der Text erklärt kurz, worum es geht, für wen das Angebot passt und warum Interessierte sich bei dir melden sollten.`,
-    '',
-    'Passt das so? Wenn du zustimmst, baue ich den Text auf deine Seite ein ✨',
-  ].join('\n')
-}
-
-function textDraftReply(
+async function textDraftReply(
   text: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>
-): { reply: string; stored: string } | null {
+): Promise<{ reply: string; stored: string } | null> {
   const pendingTopic = latestAssistantAskedForTextTopic(history)
   const previousDraft = latestTextDraft(history)
   if (!pendingTopic && previousDraft && REJECTION_RE.test(text)) {
@@ -239,11 +220,21 @@ function textDraftReply(
 
   if (!isTextDraftRequest(text) && !(pendingTopic && hasUsableTextTopic(text))) return null
 
-  const reply = makeTextDraft(text)
-  if (!reply) return null
-  const withoutIntro = reply.replace(/^Ich würde es so schreiben:\n\n/, '')
-  const draftBody = withoutIntro.split('\n\nPasst das so?')[0] || withoutIntro
-  const marker = `${TEXT_DRAFT_MARKER}${encodeDraft(draftBody)}]`
+  const topic = extractTextTopic(text)
+  if (topic.length < 3) {
+    const msg = 'Ja, gerne. Schreib mir kurz, worum es gehen soll, dann formuliere ich dir erst einen Vorschlag für den Chat ✨'
+    return { reply: msg, stored: msg }
+  }
+
+  // Pass the cleaned topic + include the original message in context via history
+  const generatedText = await generateTextDraft(topic, [...history, { role: 'user', content: text }])
+  if (!generatedText) {
+    const msg = `Gerne schreibe ich dir einen Text zu „${topic}". Sag mir kurz: Worum geht es genau, für wen ist das Angebot, und was macht dich besonders? Dann formuliere ich direkt hier einen Vorschlag ✨`
+    return { reply: msg, stored: msg }
+  }
+
+  const reply = `Ich würde es so schreiben:\n\n${generatedText}\n\nPasst das so? Wenn du zustimmst, baue ich den Text auf deine Seite ein ✨`
+  const marker = `${TEXT_DRAFT_MARKER}${encodeDraft(generatedText)}]`
   return { reply, stored: `${reply}\n${marker}` }
 }
 
@@ -538,7 +529,7 @@ async function processMessage(message: IncomingMessage) {
   }
 
   if (!imagePlacementRequest && !approvedTextDraft) {
-    const draft = textDraftReply(text || '', history)
+    const draft = await textDraftReply(text || '', history)
     if (draft) {
       await sendWhatsAppMessage(metaFrom, draft.reply)
       await appendAssistantOnly(phone, draft.stored).catch(() => {})
