@@ -796,7 +796,9 @@ async function processMessage(message: IncomingMessage) {
         await logBuild({ phone, slug: site2.slug, ok: coderResult2.ok, cost_usd: coderResult2.cost_usd, duration_ms: coderResult2.duration_ms, was_warm: coderResult2.was_warm, user_message: text, error_step: coderResult2.ok ? null : (coderResult2.error_step ?? 'coder_returned_not_ok'), error_msg: coderResult2.ok ? null : (coderResult2.error ?? null), transcript_path: coderResult2.transcript_path }).catch(() => {})
         if (coderResult2.ok) {
           if (coderResult2.sandbox_id) await updateSiteSandboxId(phone, coderResult2.sandbox_id).catch(() => {})
-          await incrementBuildCount(phone).catch(() => {})
+          if (coderResult2.files_changed.length > 0) {
+            await incrementBuildCount(phone).catch(() => {})
+          }
           const previewUrl = await getSafePreviewUrl(site2.slug)
           const body2 = (coderResult2.reply || 'Fertig! 🎉').trim()
           await sendWhatsAppCTA(metaFrom, body2, 'Website öffnen', previewUrl).catch(async () => {
@@ -929,9 +931,11 @@ async function processMessage(message: IncomingMessage) {
     if (coderResult.sandbox_id) {
       await updateSiteSandboxId(phone, coderResult.sandbox_id).catch(() => {})
     }
-    await incrementBuildCount(phone).catch((err) =>
-      console.error('incrementBuildCount failed:', err)
-    )
+    if (coderResult.files_changed.length > 0) {
+      await incrementBuildCount(phone).catch((err) =>
+        console.error('incrementBuildCount failed:', err)
+      )
+    }
     const body = (coderResult.reply || 'Fertig!').trim()
     const previewUrl = await getSafePreviewUrl(site.slug)
     const sent = await sendWhatsAppCTA(

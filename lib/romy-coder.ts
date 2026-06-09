@@ -1127,7 +1127,7 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     const result: RomyCoderResult = {
       ok,
       reply,
-      files_changed: uploaded,
+      files_changed: changedFiles.length > 0 ? uploaded : [],
       site_url: sitePreviewUrl(slug),
       duration_ms: Date.now() - t0,
       cost_usd: parsed.result?.total_cost_usd ?? null,
