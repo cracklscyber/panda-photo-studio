@@ -466,7 +466,7 @@ function generateLocalOAuthChatReply(
     return 'Ja, eine eigene Domain ist möglich. Dafür meldet sich jemand aus unserem Team persönlich bei dir, meist innerhalb von 24 Stunden 📅'
   }
 
-  if (/\b(kosten|preis|abo|zahlung|bezahlen|stripe|rechnung)\b/i.test(lower)) {
+  if (/\b(kosten|preis|abo|zahlung|zahlen|bezahlen|paypalen|paypal|stripe|rechnung|überweisen|ueberweisen)\b/i.test(lower)) {
     return 'Du kannst Luna erstmal kostenlos testen. Wenn du später mehr Änderungen brauchst oder live gehen willst, zeige ich dir den nächsten Schritt ganz klar an ✨'
   }
 

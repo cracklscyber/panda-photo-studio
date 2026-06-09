@@ -39,12 +39,17 @@ const SOCIAL_ACK_RE =
   /^\s*(ja\s+)?(danke|dankeschön|danke\s+schön|vielen\s+dank|herzlichen\s+dank|merci|thanks)(\s+(dir|luna))?\s*[!.?]*\s*$/i
 const TEXT_DRAFT_MARKER = '[ROMY_TEXT_DRAFT:'
 const CHANGE_DRAFT_MARKER = '[ROMY_CHANGE_DRAFT:'
+const BLOCKED_CHAT_MARKER = '[ROMY_BLOCKED:non_business_contact]'
 const REJECTION_RE =
   /\b(nein|nee|ne|anders|nochmal|gefällt nicht|gefaellt nicht|passt nicht|nicht so|änder|aender|umschreib|umformulieren)\b/i
 const TEXT_REQUEST_RE =
   /\b(text|texte|copy|formulierung|formulier|schreib|schreibe|headline|überschrift|ueberschrift|beschreibung|über uns|ueber uns|slogan|angebot|aktion|besser|bessern|verbesser|einfügen|einfuegen|einbauen)\b/i
 const CHANGE_REQUEST_RE =
   /\b(änder|aender|füge|fuege|einbauen|einfügen|einfuegen|ersetzen|löschen|loeschen|mach|button|link|termin|kalender|farbe|schrift|layout|sektion|bereich|angebot|öffnungszeiten|oeffnungszeiten|preise|adresse|telefon)\b/i
+const PAYMENT_OR_SUBSCRIPTION_RE =
+  /\b(kosten|preis|preise|abo|zahlung|zahlen|bezahlen|paypalen|paypal|stripe|rechnung|überweisen|ueberweisen|karte|kreditkarte)\b/i
+const APPOINTMENT_OR_CALL_RE =
+  /\b(termin|kalender|calendly|cal\.com|beratung|call|anruf|anrufen|ruf mich|telefonieren|sprechen)\b/i
 
 function hasRecentImageDraft(
   history: Array<{ role: 'user' | 'assistant'; content: string }>
@@ -102,6 +107,69 @@ function socialAckReply(
   return 'Sehr gerne! Sag mir einfach, was du als Nächstes ändern oder ergänzen möchtest 😊'
 }
 
+function isBlockedChat(history: Array<{ role: 'user' | 'assistant'; content: string }>): boolean {
+  return history.some((item) => item.role === 'assistant' && item.content.includes(BLOCKED_CHAT_MARKER))
+}
+
+function blockChatReply(): { reply: string; stored: string } {
+  const reply =
+    'Ich sehe, dass du Luna gerade aus einem anderen Grund kontaktierst. Luna ist nur für Websites von Unternehmen, lokalen Geschäften und Selbstständigen gedacht. Deshalb beende ich diesen Chat hier und kann dir nicht weiterhelfen.'
+  return { reply, stored: `${reply}\n${BLOCKED_CHAT_MARKER}` }
+}
+
+function repeatBlockedChatReply(): string {
+  return 'Dieser Chat ist gesperrt, weil Luna nur für echte Website-Anfragen von Unternehmen und Selbstständigen gedacht ist. Ich kann hier nicht weiterhelfen.'
+}
+
+function isNonBusinessContactMisuse(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+): boolean {
+  const lower = text.toLowerCase()
+  const explicitMisusePattern =
+    /\b(freundin|dating|date|flirt|sexy|nackt|erotik|sexuell|baby|schatz)\b/i
+  const explicitCompanionPattern =
+    /\b(junge|hübsche|huebsche|schöne|schoene)\s+(frau|dame|mädchen|maedchen)\b/i
+  const businessSignalPattern =
+    /\b(website|webseite|seite|unternehmen|geschäft|geschaeft|selbstständig|selbststaendig|firma|gmbh|ug|praxis|studio|schule|laden|agentur|handwerk|termin buchen|beratung)\b/i
+
+  const historyHasMisuse = history.some(
+    (item) =>
+      item.role === 'user' &&
+      (explicitMisusePattern.test(item.content.toLowerCase()) ||
+        (explicitCompanionPattern.test(item.content.toLowerCase()) &&
+          /\b(freundin|date|flirt|kennenlernen)\b/i.test(item.content.toLowerCase())))
+  )
+
+  if (!lower.trim()) return historyHasMisuse
+
+  const explicitMisuse =
+    explicitCompanionPattern.test(lower) && /\b(freundin|date|flirt|kennenlernen)\b/i.test(lower)
+  if (explicitMisuse) return true
+
+  if (explicitMisusePattern.test(lower)) {
+    return true
+  }
+
+  if (historyHasMisuse && !businessSignalPattern.test(lower)) return true
+
+  const recentlyRedirectedToBusiness = history
+    .slice(-6)
+    .some(
+      (item) =>
+        item.role === 'assistant' &&
+        /website-assistentin|lokale geschäfte|selbstständige|wenn du ein unternehmen hast/i.test(
+          item.content
+        )
+    )
+  const asksForPrivateContact =
+    /\b(deine|dir|luna)\b.{0,30}\b(handynummer|telefonnummer|nummer)\b/i.test(lower) ||
+    /\b(handynummer|telefonnummer|nummer)\b.{0,30}\b(von dir|luna|schick)\b/i.test(lower) ||
+    /\b(ruf mich mal an|ruf mich an)\b/i.test(lower)
+
+  return recentlyRedirectedToBusiness && asksForPrivateContact
+}
+
 function encodeDraft(text: string): string {
   return Buffer.from(text, 'utf8').toString('base64url')
 }
@@ -135,8 +203,7 @@ function latestDraft(
     if (item.role !== 'assistant') continue
     const markerIndex = item.content.indexOf(marker)
     if (markerIndex === -1) {
-      if (item.content.includes('[ROMY_SITE:')) return null
-      continue
+      return null
     }
     const start = markerIndex + marker.length
     const end = item.content.indexOf(']', start)
@@ -152,6 +219,21 @@ function isTextDraftRequest(text: string): boolean {
     return false
   }
   return true
+}
+
+function isOutOfBandChatIntent(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized) return false
+  if (PAYMENT_OR_SUBSCRIPTION_RE.test(normalized)) return true
+  if (
+    APPOINTMENT_OR_CALL_RE.test(normalized) &&
+    !/\b(änder|aender|einbau|einbauen|einfüg|einfueg|füge|fuege|button|website|webseite|seite)\b/i.test(
+      normalized
+    )
+  ) {
+    return true
+  }
+  return false
 }
 
 function latestAssistantAskedForTextTopic(
@@ -241,6 +323,7 @@ async function textDraftReply(
 function isGenericChangeRequest(text: string): boolean {
   if (!CHANGE_REQUEST_RE.test(text)) return false
   if (isTextDraftRequest(text)) return false
+  if (isOutOfBandChatIntent(text)) return false
   if (/^\s*(hey|hi|hallo|moin|servus|danke|ja|nein|ok|okay)\b/i.test(text)) return false
   return text.trim().length >= 8
 }
@@ -478,6 +561,29 @@ async function processMessage(message: IncomingMessage) {
           },
         ]
       : history
+
+  if (isBlockedChat(history)) {
+    const storedUserMessage = imageUrl ? '[Bild erhalten]' : text || '(leer)'
+    await appendUserOnly(phone, storedUserMessage).catch((err) =>
+      console.error('append blocked user failed:', err)
+    )
+    const reply = repeatBlockedChatReply()
+    await sendWhatsAppMessage(metaFrom, reply)
+    await appendAssistantOnly(phone, reply).catch(() => {})
+    return
+  }
+
+  if (isNonBusinessContactMisuse(text || '', history)) {
+    const storedUserMessage = imageUrl ? '[Bild erhalten]' : text || '(leer)'
+    await appendUserOnly(phone, storedUserMessage).catch((err) =>
+      console.error('append misuse user failed:', err)
+    )
+    const blocked = blockChatReply()
+    await sendWhatsAppMessage(metaFrom, blocked.reply)
+    await appendAssistantOnly(phone, blocked.stored).catch(() => {})
+    return
+  }
+
   let publicImageUrl: string | undefined
   if (imageUrl?.startsWith('data:')) {
     const uploadSlug = existingSite?.slug || `tmp-${phone.replace(/[^a-z0-9]/gi, '-')}`
@@ -498,11 +604,14 @@ async function processMessage(message: IncomingMessage) {
     text = `Baue das zuletzt bestätigte oder hochgeladene Bild passend in die Website ein. Wunsch der Kundin: ${text || 'Bild einbauen'}`
   }
 
+  const outOfBandChatIntent = isOutOfBandChatIntent(text || '')
   const incomingTextDraftRequest =
     isTextDraftRequest(text || '') ||
     (latestAssistantAskedForTextTopic(history) && hasUsableTextTopic(text || ''))
   const approvedTextDraft =
-    imagePlacementRequest || incomingTextDraftRequest ? null : latestTextDraft(history)
+    imagePlacementRequest || incomingTextDraftRequest || outOfBandChatIntent
+      ? null
+      : latestTextDraft(history)
   if (approvedTextDraft) {
     const decision = await classifyDraftResponse(history, text || '', approvedTextDraft)
     if (decision === 'approve') {
@@ -537,7 +646,8 @@ async function processMessage(message: IncomingMessage) {
     }
   }
 
-  const approvedChangeDraft = imagePlacementRequest ? null : latestChangeDraft(history)
+  const approvedChangeDraft =
+    imagePlacementRequest || outOfBandChatIntent ? null : latestChangeDraft(history)
   if (approvedChangeDraft) {
     const decision = await classifyDraftResponse(history, text || '', approvedChangeDraft)
     if (decision === 'approve') {
