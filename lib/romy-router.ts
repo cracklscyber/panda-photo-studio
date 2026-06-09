@@ -671,6 +671,7 @@ Regeln:
 - Wenn der Gesprächsverlauf einen Unternehmensnamen, eine Branche oder konkrete Details enthält, beziehe dich darauf
 - Wenn ein Datum, eine Uhrzeit oder ein Starttermin im Kontext erwähnt wird, baue es natürlich ein
 - Kein Markdown, keine Sternchen, keine Aufzählungen
+- Keine langen Gedankenstriche oder Textstriche verwenden. Nutze Komma oder Punkt.
 - Schreibe so, als wäre es der Inhaber selbst, der herzlich und persönlich über sein Angebot spricht
 - Direkte Ansprache der Besucher ist gut ("Sie sind herzlich willkommen" oder "Komm vorbei")
 - NICHT "malen", stattdessen "erstellen" oder "generieren" bei Bildthemen`,

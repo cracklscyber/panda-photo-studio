@@ -34,6 +34,9 @@ const ACK_FIRST =
   'Alles klar, ich leg jetzt los 🚀 Beim ersten Mal kann es ein paar Minuten dauern. Um die Feinheiten kümmern wir uns danach.'
 const ACK_FOLLOWUP =
   'Mach ich, ich setze das jetzt um ✨'
+const BUILD_IN_PROGRESS_REPLY =
+  'Ich bin noch am Entwurf dran und melde mich, sobald er fertig ist ✨'
+const activeWebsiteBuilds = new Set<string>()
 
 const SOCIAL_ACK_RE =
   /^\s*(ja\s+)?(danke|dankeschön|danke\s+schön|vielen\s+dank|herzlichen\s+dank|merci|thanks)(\s+(dir|luna))?\s*[!.?]*\s*$/i
@@ -250,7 +253,6 @@ function latestAssistantAskedForTextTopic(
       lower.includes('wofuer der text') ||
       lower.includes('welchen text') ||
       lower.includes('welches thema') ||
-      lower.includes('welche stimmung') ||
       lower.includes('was macht dich besonders')
     ) {
       return true
@@ -309,7 +311,9 @@ async function textDraftReply(
   }
 
   // Pass the cleaned topic + include the original message in context via history
-  const generatedText = await generateTextDraft(topic, [...history, { role: 'user', content: text }])
+  const generatedText = sanitizeReply(
+    await generateTextDraft(topic, [...history, { role: 'user', content: text }]) || ''
+  )
   if (!generatedText) {
     const msg = `Gerne schreibe ich dir einen Text zu „${topic}". Sag mir kurz: Worum geht es genau, für wen ist das Angebot, und was macht dich besonders? Dann formuliere ich direkt hier einen Vorschlag ✨`
     return { reply: msg, stored: msg }
@@ -782,17 +786,28 @@ async function processMessage(message: IncomingMessage) {
       const site2 = await getOrCreateSite(phone, text || 'Bild einbauen', historyWithConfirm)
       if ((site2.builds_used ?? 0) < FREE_BUILD_LIMIT || site2.paid) {
         const isFirst2 = !site2.last_sandbox_id
+        if (activeWebsiteBuilds.has(phone)) {
+          await sendWhatsAppMessage(metaFrom, BUILD_IN_PROGRESS_REPLY).catch(() => {})
+          await appendAssistantOnly(phone, BUILD_IN_PROGRESS_REPLY).catch(() => {})
+          return
+        }
         const ack2 = isFirst2 ? ACK_FIRST : ACK_FOLLOWUP
         await sendWhatsAppMessage(metaFrom, ack2).catch(() => {})
         await appendAssistantOnly(phone, ack2).catch(() => {})
-        const coderResult2 = await runRomyCoder({
-          slug: site2.slug,
-          userMessage: text || 'Bild in Website einbauen',
-          phone,
-          imageUrl,
-          history: updatedRoutedHistory,
-          isFirstBuild: isFirst2,
-        })
+        activeWebsiteBuilds.add(phone)
+        let coderResult2
+        try {
+          coderResult2 = await runRomyCoder({
+            slug: site2.slug,
+            userMessage: text || 'Bild in Website einbauen',
+            phone,
+            imageUrl,
+            history: updatedRoutedHistory,
+            isFirstBuild: isFirst2,
+          })
+        } finally {
+          activeWebsiteBuilds.delete(phone)
+        }
         await logBuild({ phone, slug: site2.slug, ok: coderResult2.ok, cost_usd: coderResult2.cost_usd, duration_ms: coderResult2.duration_ms, was_warm: coderResult2.was_warm, user_message: text, error_step: coderResult2.ok ? null : (coderResult2.error_step ?? 'coder_returned_not_ok'), error_msg: coderResult2.ok ? null : (coderResult2.error ?? null), transcript_path: coderResult2.transcript_path }).catch(() => {})
         if (coderResult2.ok) {
           if (coderResult2.sandbox_id) await updateSiteSandboxId(phone, coderResult2.sandbox_id).catch(() => {})
@@ -886,6 +901,11 @@ async function processMessage(message: IncomingMessage) {
   }
 
   const isFirstBuild = !site.last_sandbox_id
+  if (activeWebsiteBuilds.has(phone)) {
+    await sendWhatsAppMessage(metaFrom, BUILD_IN_PROGRESS_REPLY).catch(() => {})
+    await appendAssistantOnly(phone, BUILD_IN_PROGRESS_REPLY).catch(() => {})
+    return
+  }
   const ack = isFirstBuild ? ACK_FIRST : ACK_FOLLOWUP
   await sendWhatsAppMessage(metaFrom, ack).catch((err) => {
     console.error('ack send failed:', err)
@@ -894,14 +914,20 @@ async function processMessage(message: IncomingMessage) {
     console.error('append ack failed:', err)
   )
 
-  const coderResult = await runRomyCoder({
-    slug: site.slug,
-    userMessage: text || 'Hallo',
-    phone,
-    imageUrl: effectiveImageUrl,
-    history,
-    isFirstBuild,
-  })
+  activeWebsiteBuilds.add(phone)
+  let coderResult
+  try {
+    coderResult = await runRomyCoder({
+      slug: site.slug,
+      userMessage: text || 'Hallo',
+      phone,
+      imageUrl: effectiveImageUrl,
+      history,
+      isFirstBuild,
+    })
+  } finally {
+    activeWebsiteBuilds.delete(phone)
+  }
 
   await logBuild({
     phone,
@@ -971,6 +997,7 @@ async function processMessage(message: IncomingMessage) {
 async function sendWhatsAppMessage(to: string, text: string) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   const token = process.env.WHATSAPP_TOKEN
+  const body = sanitizeReply(text) || 'Entschuldigung, da ist gerade etwas schiefgelaufen. Ich habe das an mein Team weitergeleitet.'
 
   const res = await fetch(
     `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
@@ -984,7 +1011,7 @@ async function sendWhatsAppMessage(to: string, text: string) {
         messaging_product: 'whatsapp',
         to,
         type: 'text',
-        text: { body: text },
+        text: { body },
       }),
     }
   )

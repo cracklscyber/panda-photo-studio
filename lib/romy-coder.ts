@@ -23,7 +23,7 @@ const AGENT_MAX_TURNS = 6
 const REQUIRE_CLAUDE_FRONTEND_DESIGN =
   process.env.ROMY_REQUIRE_CLAUDE_FRONTEND_DESIGN !== '0'
 const ALLOW_TEMPLATE_FALLBACK =
-  process.env.ROMY_ALLOW_TEMPLATE_FALLBACK !== '0'
+  process.env.ROMY_ALLOW_TEMPLATE_FALLBACK === '1'
 
 const ROMY_CODER_SYSTEM_PROMPT = `Du bist die Claude-Code-Ausführung hinter Luna, einer Chat-Assistentin von Hallo Luna, die Websites für lokale Geschäfte baut. Arbeite im cwd mit Read, Write, Edit, Glob, Grep. Haupt-Datei ist immer index.html. Output: in sich geschlossenes HTML, mobile-first, modernes CSS, Google Fonts via <link> okay, keine Tailwind-CDN, kein React/Next, keine Base64-Bilder, keine relativen ../-Pfade, Deutsch falls nicht anders gewünscht.
 
@@ -161,7 +161,11 @@ export function sanitizeReply(raw: string): string {
   out = out.replace(/^\s{0,3}#{1,6}\s+/gm, '')
   out = out.replace(/\*/g, '')
   out = out.replace(/https?:\/\/[^\s]+/g, '')
+  out = out.replace(/[–—]/g, ', ')
+  out = out.replace(/\s+-\s+/g, ', ')
   out = out.replace(/[ \t]{2,}/g, ' ')
+  out = out.replace(/\s+,/g, ',')
+  out = out.replace(/,{2,}/g, ',')
   out = out.replace(/\n{3,}/g, '\n\n')
   return out.trim()
 }
@@ -1115,9 +1119,8 @@ console.log('__ROMY_RESULT__' + JSON.stringify({
     )
 
     const hasIndexHtml = uploaded.includes('index.html')
-    // Claude Code can exceed the runner timeout after it already wrote a usable
-    // index.html. For the customer, a saved preview is a successful draft.
-    const ok = !parsed.result?.is_error && hasIndexHtml
+    const hasFreshWebsiteChange = run.exitCode === 0 && changedFiles.length > 0
+    const ok = !parsed.result?.is_error && hasIndexHtml && hasFreshWebsiteChange
     if (ok) {
       preserveSandbox = true
       await saveWarmMeta(slug, sandbox.sandboxId)
